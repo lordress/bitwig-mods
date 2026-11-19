@@ -1,0 +1,193 @@
+{
+  "manifest_version": 2,
+  "mod": {
+    "id": "ress-sq",
+    "name": "Piano Roll: RESS-SQ",
+    "version": "0.1.1",
+    "author": "Ressa",
+    "description": "A sixteenth-note step grid for the Detail Editor with a playhead, page following, randomise and clear tools, and per-step velocity, offset, length, repeat, pitch and chance. Runs beside Polarity's Step Sequencer with its own button and icon.",
+    "documentation": "readme"
+  },
+  "built_against": {
+    "bitwig_version": "6.1.7",
+    "platform": "macos",
+    "architecture": "universal"
+  },
+  "helper": {
+    "jar": "helper.jar",
+    "class": "com.ress.sq.RessSq"
+  },
+  "targets": {
+    "com.bitwig.flt.widget.core.timeline.WRA.beI": {
+      "kind": "method",
+      "owner": "com/bitwig/flt/widget/core/timeline/WRA",
+      "name": "beI",
+      "descriptor": "(Lbke;LJtD;)LdwF;"
+    },
+    "aNi.Gef": {
+      "kind": "method",
+      "owner": "aNi",
+      "name": "Gef",
+      "descriptor": "(LHSH;Lbke;LbaN;)V"
+    },
+    "baN.beI": {
+      "kind": "method",
+      "owner": "baN",
+      "name": "beI",
+      "descriptor": "(LnNL;Lbke;Ljava/util/EnumSet;)V"
+    },
+    "bke.TaR": {
+      "kind": "method",
+      "owner": "bke",
+      "name": "TaR",
+      "descriptor": "()V"
+    },
+    "bke.yX3": {
+      "kind": "method",
+      "owner": "bke",
+      "name": "yX3",
+      "descriptor": "()V"
+    },
+    "com.bitwig.flt.document.api.document.ApiModificationProcessor": {
+      "kind": "class",
+      "class": "com/bitwig/flt/document/api/document/ApiModificationProcessor"
+    },
+    "com.bitwig.flt.document.core.master.dEy": {
+      "kind": "class",
+      "class": "com/bitwig/flt/document/core/master/dEy"
+    },
+    "aJI.Anf": {
+      "kind": "field",
+      "owner": "aJI",
+      "name": "Anf",
+      "descriptor": "LaNi;"
+    },
+    "aNi.GKF": {
+      "kind": "field",
+      "owner": "aNi",
+      "name": "GKF",
+      "descriptor": "LdXL;"
+    },
+    "aNi.mYH": {
+      "kind": "field",
+      "owner": "aNi",
+      "name": "mYH",
+      "descriptor": "Lcom/bitwig/flt/widget/core/timeline/MhB;"
+    },
+    "com.bitwig.flt.document.core.master.dEy.init": {
+      "kind": "method",
+      "owner": "com/bitwig/flt/document/core/master/dEy",
+      "name": "<init>",
+      "descriptor": "()V"
+    },
+    "dBY.beI": {
+      "kind": "method",
+      "owner": "dBY",
+      "name": "beI",
+      "descriptor": "(LejM;)V"
+    },
+    "dtt.init": {
+      "kind": "method",
+      "owner": "dtt",
+      "name": "<init>",
+      "descriptor": "()V"
+    },
+    "dtt.unz": {
+      "kind": "method",
+      "owner": "dtt",
+      "name": "unz",
+      "descriptor": "()V"
+    },
+    "dwF.init": {
+      "kind": "method",
+      "owner": "dwF",
+      "name": "<init>",
+      "descriptor": "()V"
+    }
+  },
+  "hooks": [
+    {
+      "id": "add-steps-button",
+      "target": "com.bitwig.flt.widget.core.timeline.WRA.beI",
+      "transform": "WRAP_OBJECT_RETURN",
+      "bridge": {
+        "method": "addStepsButton",
+        "descriptor": "(LdwF;)LdwF;",
+        "args": []
+      }
+    },
+    {
+      "id": "mount",
+      "target": "aNi.Gef",
+      "transform": "INSERT_BEFORE_FINAL_RETURN",
+      "bridge": {
+        "method": "mount",
+        "descriptor": "(LaNi;)V",
+        "args": [
+          "this"
+        ]
+      }
+    },
+    {
+      "id": "native-mode",
+      "target": "baN.beI",
+      "transform": "INSERT_AT_ENTRY",
+      "bridge": {
+        "method": "nativeMode",
+        "descriptor": "(Lbke;)V",
+        "args": [
+          "arg2"
+        ]
+      }
+    },
+    {
+      "id": "piano-mode",
+      "target": "bke.TaR",
+      "transform": "INSERT_AT_ENTRY",
+      "bridge": {
+        "method": "pianoMode",
+        "descriptor": "(Lbke;)V",
+        "args": [
+          "this"
+        ]
+      }
+    },
+    {
+      "id": "drum-mode",
+      "target": "bke.yX3",
+      "transform": "INSERT_AT_ENTRY",
+      "bridge": {
+        "method": "drumMode",
+        "descriptor": "(Lbke;)V",
+        "args": [
+          "this"
+        ]
+      }
+    }
+  ],
+  "opens": [
+    "aJI.Anf",
+    "aNi.GKF",
+    "aNi.mYH",
+    "com.bitwig.flt.document.api.document.ApiModificationProcessor",
+    "com.bitwig.flt.document.core.master.dEy",
+    "com.bitwig.flt.document.core.master.dEy.init",
+    "dBY.beI",
+    "dtt.init",
+    "dtt.unz",
+    "dwF.init"
+  ],
+  "requires": [
+    {
+      "id": "piano-roll-framework",
+      "min_version": "0.2.0-dev.1"
+    }
+  ],
+  "resources": {
+    "readme": {
+      "kind": "file",
+      "path": "README.md",
+      "media_type": "text/markdown"
+    }
+  }
+}

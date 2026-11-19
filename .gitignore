@@ -1,0 +1,8 @@
+# mod build outputs: rebuilt from source, never committed
+/dist/
+*.jar
+*.class
+
+__pycache__/
+*.pyc
+.DS_Store
