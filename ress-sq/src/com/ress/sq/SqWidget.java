@@ -4,6 +4,7 @@ import bitwig.obf.SZB; // native color
 import bitwig.obf.bke; // Detail Editor controller
 import bitwig.obf.dLf; // mouse press
 import bitwig.obf.dLg; // mouse release
+import bitwig.obf.dLp; // mouse wheel
 import bitwig.obf.dLk; // mouse drag
 import bitwig.obf.dsB; // subscription to a window's display frames
 import bitwig.obf.dtt; // native mouse gesture
@@ -32,6 +33,7 @@ final class SqWidget extends dwF {
     private static final SZB PLAYHEAD = new SZB(0.98f, 0.71f, 0.32f, 1f);
     private static final SZB ERASE = new SZB(0.95f, 0.36f, 0.32f, 1f);
     private static final int TOOLS = 3;
+    private static final int WHEEL_ROWS = 3;
     private static final long REFRESH_INTERVAL = 150_000_000L;
 
     private final bke editor;
@@ -220,7 +222,7 @@ final class SqWidget extends dwF {
     private double labels() { return Math.min(wGt(156), rtK() * 0.33); }
     private double column() { return Math.max(1, (rtK() - labels()) / SqGrid.STEPS); }
     private double gridRight() { return labels() + SqGrid.STEPS * column(); }
-    private double rowHeight() { return Math.max(wGt(20), Math.min(wGt(42), column() * 0.70)); }
+    private double rowHeight() { return Math.max(wGt(13), Math.min(wGt(26), column() * 0.50)); }
     private double top() { return wGt(48); }
     private double bottom() { return Math.max(top(), cBV() - wGt(25)); }
     private double toolsWidth() { return wGt(104); }
@@ -276,8 +278,6 @@ final class SqWidget extends dwF {
             graphics.beI(labels() + column * column() + wGt(3), wGt(41), Integer.toString(column + 1), text.beI(0.6f));
         }
         rectangle(graphics, 0, bottom(), rtK(), wGt(25), STRIP);
-        button(graphics, wGt(5), bottom() + wGt(3), "↑", firstRow > 0, text);
-        button(graphics, wGt(34), bottom() + wGt(3), "↓", firstRow < maxFirstRow(target), text);
         for (Parameter tab : PARAMETERS) {
             double x = tabStart() + tab.ordinal() * tabWidth();
             boolean selected = parameter == tab;
@@ -397,7 +397,7 @@ final class SqWidget extends dwF {
                 break;
             }
             rectangle(graphics, 0, y, labels() - wGt(2), height, STRIP);
-            if (height >= wGt(15)) {
+            if (height >= wGt(11)) {
                 String name = pitch.name();
                 int limit = Math.max(4, (int) ((labels() - wGt(15)) / Math.max(1, wGt(7))));
                 graphics.beI(wGt(8), y + height * 0.5 + wGt(4),
@@ -508,10 +508,6 @@ final class SqWidget extends dwF {
                 return control(() -> changePage(1));
             }
         }
-        if (y >= bottom() && x <= wGt(59)) {
-            int direction = x < wGt(32) ? -1 : 1;
-            return control(() -> scrollRows(direction * Math.max(1, visibleRows() - 1)));
-        }
         if (y >= bottom() && x >= toolsStart() && x < rtK()) {
             int tool = (int) ((x - toolsStart()) / toolWidth());
             return control(() -> {
@@ -566,6 +562,25 @@ final class SqWidget extends dwF {
             playingColumn = -1;
             refresh();
             OCx();
+        }
+    }
+
+    /**
+     * The mouse wheel scrolls the pitch rows. Bitwig delivers it as its own event
+     * class; iFu() is the wheel delta, the same value Bitwig's own widgets compare
+     * against a step threshold.
+     */
+    @Override
+    public void beI(dLp event) {
+        try {
+            if (view.active.getBoolValue() && target != null) {
+                int delta = event.iFu();
+                if (delta != 0) {
+                    scrollRows(-Integer.signum(delta) * WHEEL_ROWS);
+                }
+            }
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not scroll the step rows", failure);
         }
     }
 

@@ -17,8 +17,8 @@ or switch to Piano or Drums.
 - **Edit a step.** Pick **Velocity**, **Offset**, **Length**, **Repeat**,
   **Pitch** or **Chance** in the footer, then drag an occupied cell vertically.
   Escape cancels the gesture.
-- **Pages.** 16 sixteenth-note steps per page. The header arrows change pages;
-  the footer arrows scroll the pitch rows.
+- **Pages.** 16 sixteenth-note steps per page. The header arrows change pages.
+  Move the mouse wheel over the grid to scroll the pitch rows.
 - **Erase.** Right-drag or Shift-click-drag across the grid. The red outline
   previews what will go, and release erases it in one undo step.
 - **Outline and marks.** The playhead outlines its set steps. The bright fill is
@@ -41,7 +41,7 @@ or switch to Piano or Drums.
 ## Install with Patchbay
 
 1. Install Patchbay Mod Loader and patch Bitwig from its window.
-2. **Mods → Add Mod…** and pick `ress-sq-0.1.1.zip` (do not unpack it).
+2. **Mods → Add Mod…** and pick `ress-sq-0.1.2.zip` (do not unpack it).
 3. Tick **Framework: Piano Roll** (it ships with Patchbay) and **RESS-SQ**, then
    click **Load**.
 
@@ -69,7 +69,7 @@ python3 tools/build_releases.py \
 
 It compiles the helper against Bitwig's own jar, validates every hook with the mod
 kit, generates the finished `mod.json` from the hooks it reports, and writes
-`dist/ress-sq-0.1.1.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
+`dist/ress-sq-0.1.2.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
 offline check and publishing.
 
 ## Layout
