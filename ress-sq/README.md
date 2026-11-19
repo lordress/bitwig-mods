@@ -57,42 +57,37 @@ and the tooltip **RESS-SQ Steps**. Clicking either one shows that mod's grid
 
 ## Build
 
-Needs JDK 25 and a Bitwig 6.1.7 install, plus the BML mod kit.
+From the repository root, with JDK 25 and a Bitwig 6.1.7 install:
 
 ```sh
-JAVA=.../jdk-25/bin/java
-JAVAC=.../jdk-25/bin/javac
-KIT=.../BML/modkit
-BW=/Applications/Bitwig\ Studio.app/Contents/Java
-
-# 1. compile jar, once per Bitwig build
-$JAVA -jar $KIT/bml-modkit.jar compile-jar $BW/bitwig.jar /tmp/bw617-compile.jar
-
-# 2. compile against Bitwig, libs, the API and the framework
-$JAVAC --release 21 -proc:none -encoding UTF-8 -implicit:none \
-  -cp /tmp/bw617-compile.jar:$BW/libs.jar:$KIT/bml-api.jar:.../piano-roll-framework/helper.jar \
-  -d /tmp/classes $(find src -name '*.java')
-
-# 3. validate every hook against Bitwig's jar and write hooks.json
-$JAVA -jar $KIT/bml-modkit.jar finish /tmp/classes /tmp/hooks.json $BW/bitwig.jar $BW/libs.jar .../piano-roll-framework/helper.jar
-
-# 4. regenerate mod.json from hooks.json
-python3 build_manifest.py
+python3 tools/build_releases.py \
+  --bitwig-bin "/Applications/Bitwig Studio.app/Contents/Java" \
+  --modkit "<BML>/modkit" \
+  --framework "<BML>/mods/piano-roll-framework/helper.jar" \
+  --jdk-bin "<jdk-25>/Contents/Home/bin"
 ```
 
-`src/` holds only Java. `build_manifest.py` writes `mod.json` from the mod kit's
-`hooks.json`, so the manifest always matches the compiled helper.
+It compiles the helper against Bitwig's own jar, validates every hook with the mod
+kit, generates the finished `mod.json` from the hooks it reports, and writes
+`dist/ress-sq-0.1.1.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
+offline check and publishing.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
+| `mod.json` | The source manifest: id, name, version, `built_against`, the framework it needs |
+| `build.json` | Which frameworks the source compiles against |
 | `src/com/ress/sq/RessSq.java` | Hooks: the Show Steps button, the panel mount, mode switches |
 | `src/com/ress/sq/SqWidget.java` | The grid widget: painting, mouse gestures, RESS-SQ tools |
 | `src/com/ress/sq/SqClip.java` | Reads the focused clip, its rows, colour and playhead |
 | `src/com/ress/sq/SqGrid.java` | Pure geometry: cells, pages, placements, overlap rules |
 | `src/com/ress/sq/SqNote.java` | Native note repeats and chance as one undo step |
-| `build_manifest.py` | Turns `hooks.json` into the finished `mod.json` |
+| `package/LICENSE` | The original copyright notice, copied into the release ZIP |
+
+`mod.json` here stays the source manifest. The build script writes the packaged
+one, with `targets`, `hooks` and `opens` taken from the compiled helper, so the
+two cannot drift apart.
 
 The Bitwig class names in the source are 6.1.7's, each with a comment saying what
 it is. They change with every Bitwig release.
@@ -101,4 +96,4 @@ it is. They change with every Bitwig release.
 
 The idea, the interaction model and most of the code come from
 [Polarity's Step Sequencer](https://github.com/polarity/bitwig-mods/tree/main/step-sequencer),
-MIT licensed; see [LICENSE](LICENSE).
+MIT licensed; see [package/LICENSE](package/LICENSE).
