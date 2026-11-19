@@ -45,6 +45,13 @@ the manifest stays at `<mod-id>/mod.json` on the default branch, the ZIP is name
 `<mod-id>-<version>.zip`, and it is attached to a GitHub Release rather than
 committed.
 
+## Devices
+
+Native devices and modulators live in
+[Ressa's Bitwig Devices](https://github.com/lordress/bitwig-devices), not here.
+Patchbay loads them through **Framework: Nitro Devices** (`custom-device-registrar`);
+they are `.bwdevice` files in per-version folders rather than mods.
+
 ## Licence
 
 MIT for the mods' code and packaging. RESS-SQ keeps the original copyright notice
