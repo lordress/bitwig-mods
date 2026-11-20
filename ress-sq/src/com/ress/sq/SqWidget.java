@@ -263,7 +263,7 @@ final class SqWidget extends dwF {
     private double toolsWidth() { return wGt(104); }
     private double toolsStart() { return rtK() - toolsWidth(); }
     private double toolWidth() { return toolsWidth() / TOOLS; }
-    private double tabStart() { return Math.max(wGt(65), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
+    private double tabStart() { return Math.max(wGt(102), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
     private double tabWidth() { return Math.min(wGt(70), Math.max(1, (rtK() - toolsWidth() - tabStart()) / PARAMETERS.length)); }
     private int visibleRows() { return Math.max(1, (int) Math.ceil((bottom() - top()) / rowHeight())); }
     private int maxFirstRow() { return Math.max(0, shownRows.size() - visibleRows()); }
@@ -356,12 +356,15 @@ final class SqWidget extends dwF {
             graphics.beI(labels() + column * column() + wGt(3), wGt(41), Integer.toString(column + 1), text.beI(0.6f));
         }
         rectangle(graphics, 0, bottom(), rtK(), wGt(25), STRIP);
-        double foldX = wGt(4);
+        double foldX = wGt(50);
         rectangle(graphics, foldX, bottom() + wGt(3), wGt(46), wGt(18), fold ? BEAT : CELL);
         if (fold) {
             rectangle(graphics, foldX, bottom() + wGt(20), wGt(46), wGt(1), ACCENT);
         }
         graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(fold ? 1f : 0.7f));
+        // Scroll the pitch rows a page at a time.
+        button(graphics, upLeft(), bottom() + wGt(3), "▲", firstRow > 0, text);
+        button(graphics, downLeft(), bottom() + wGt(3), "▼", firstRow < maxFirstRow(), text);
         for (Parameter tab : PARAMETERS) {
             double x = tabStart() + tab.ordinal() * tabWidth();
             boolean selected = parameter == tab;
@@ -472,6 +475,9 @@ final class SqWidget extends dwF {
             refresh();
         }
     }
+
+    private double upLeft() { return wGt(4); }
+    private double downLeft() { return wGt(26); }
 
     private void button(com.bitwig.graphics.ijY graphics, double x, double y, String label, boolean enabled, SZB text) {
         rectangle(graphics, x, y, wGt(25), wGt(18), CELL);
@@ -663,7 +669,13 @@ final class SqWidget extends dwF {
                 OCx();
             });
         }
-        if (y >= bottom() && x >= wGt(4) && x < wGt(52)) {
+        if (y >= bottom() && x >= upLeft() && x < upLeft() + wGt(25)) {
+            return control(() -> scrollRows(-Math.max(1, visibleRows() - 1)));
+        }
+        if (y >= bottom() && x >= downLeft() && x < downLeft() + wGt(25)) {
+            return control(() -> scrollRows(Math.max(1, visibleRows() - 1)));
+        }
+        if (y >= bottom() && x >= wGt(50) && x < wGt(96)) {
             return control(() -> {
                 fold = !fold;
                 shownRows = computeShown(target);
