@@ -265,7 +265,7 @@ final class SqWidget extends dwF {
         }
     }
 
-    private double labels() { return Math.min(wGt(156), rtK() * 0.33); }
+    private double labels() { return Math.min(wGt(200), rtK() * 0.38); }
     private double column() { return Math.max(1, (rtK() - labels()) / SqGrid.STEPS); }
     private double gridRight() { return labels() + SqGrid.STEPS * column(); }
     private double rowHeight() { return Math.max(wGt(13), Math.min(wGt(26), column() * 0.50)); }
