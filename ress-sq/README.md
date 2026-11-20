@@ -32,12 +32,13 @@ The label column holds one control row per pitch:
 
 - **Mark** — the small square on the left of the name. **FOLD**, in the footer
   before **Velocity**, hides every unmarked row.
+- **N** (far left, before the mark) — rename
 - **M** — mutes that pitch: its notes go to velocity 0 in one undo step and keep
   the velocity they had, so unmuting restores it. Nothing is deleted.
 - **S** — solos that pitch: while any row is soloed, every other row is muted the
   same way.
-- **→** — selects every note of that pitch in the clip, so RND and Bitwig's own
-  tools work on the row.
+- **SELECT** (footer, after **FOLD**) — puts every row on show into RND's scope,
+  tinting them softly; press again to clear.
 - **N** — rename: picks from a list (Kick, Snare, Clap, …); **Clear** puts Bitwig's
   name back (Kick, Snare, Clap, …). The row
   then reads `B2 Kick`, with Bitwig's own pitch name kept in front. **Clear** puts

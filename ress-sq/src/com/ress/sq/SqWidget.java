@@ -1,8 +1,6 @@
 package com.ress.sq;
 
-import bitwig.obf.PiG; // native note selection
 import bitwig.obf.SZB; // native color
-import bitwig.obf.c1N; // native MIDI note
 import bitwig.obf.bke; // Detail Editor controller
 import bitwig.obf.dLf; // mouse press
 import bitwig.obf.dLg; // mouse release
@@ -68,6 +66,8 @@ final class SqWidget extends dwF {
         final Set<Integer> marked = new HashSet<>();
         final Set<Integer> muted = new HashSet<>();
         final Set<Integer> solo = new HashSet<>();
+        /** Rows whose notes the RND tool works on. */
+        final Set<Integer> scoped = new HashSet<>();
         final Map<Integer, String> names = new HashMap<>();
         /** Velocities the mute replaced, so unmuting puts them back. */
         final Map<String, Double> savedVelocity = new HashMap<>();
@@ -274,7 +274,7 @@ final class SqWidget extends dwF {
     private double toolsWidth() { return wGt(104); }
     private double toolsStart() { return rtK() - toolsWidth(); }
     private double toolWidth() { return toolsWidth() / TOOLS; }
-    private double tabStart() { return Math.max(wGt(65), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
+    private double tabStart() { return Math.max(wGt(114), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
     private double tabWidth() { return Math.min(wGt(70), Math.max(1, (rtK() - toolsWidth() - tabStart()) / PARAMETERS.length)); }
     private int visibleRows() { return Math.max(1, (int) Math.ceil((bottom() - top()) / rowHeight())); }
     private int maxFirstRow() { return Math.max(0, shownRows.size() - visibleRows()); }
@@ -308,11 +308,26 @@ final class SqWidget extends dwF {
     private static final int PILL = 17;
     private static final int PILL_GAP = 4;
     private double pillsRight() { return labels() - wGt(7); }
-    private double renameLeft() { return pillsRight() - wGt(PILL); }
-    private double selectLeft() { return renameLeft() - wGt(PILL + PILL_GAP); }
-    private double soloLeft() { return selectLeft() - wGt(PILL + PILL_GAP); }
+    private double soloLeft() { return pillsRight() - wGt(PILL); }
     private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
-    private double nameLeft() { return wGt(17); }
+    private double renameLeft() { return wGt(4); }
+    private double markLeft() { return wGt(4 + PILL + 4); }
+    private double nameLeft() { return wGt(4 + PILL + 4 + 13); }
+    /** Footer: select every note of the rows on show, for RND. */
+    private double selectAllLeft() { return wGt(54); }
+    private double selectAllWidth() { return wGt(52); }
+
+    private boolean allScoped() {
+        if (shownRows.isEmpty() || target == null) {
+            return false;
+        }
+        for (int index : shownRows) {
+            if (!state.scoped.contains(target.rows().get(index).key())) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
@@ -368,6 +383,14 @@ final class SqWidget extends dwF {
             rectangle(graphics, foldX, bottom() + wGt(20), wGt(46), wGt(1), ACCENT);
         }
         graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(fold ? 1f : 0.7f));
+        boolean all = allScoped();
+        double selectX = selectAllLeft();
+        rectangle(graphics, selectX, bottom() + wGt(3), selectAllWidth(), wGt(18), all ? BEAT : CELL);
+        if (all) {
+            rectangle(graphics, selectX, bottom() + wGt(20), selectAllWidth(), wGt(1), ACCENT);
+        }
+        graphics.beI(selectX + centered("SELECT", selectAllWidth()), bottom() + wGt(16), "SELECT",
+                text.beI(all ? 1f : 0.7f));
         for (Parameter tab : PARAMETERS) {
             double x = tabStart() + tab.ordinal() * tabWidth();
             boolean selected = parameter == tab;
@@ -396,7 +419,11 @@ final class SqWidget extends dwF {
     }
 
     /** Every step cell the grid is showing on this page, row by row. */
-    private void visitPageCells(java.util.function.Consumer<SqGrid.Cell<SqNote>> visitor) {
+    private interface CellVisitor {
+        void accept(int key, SqGrid.Cell<SqNote> cell);
+    }
+
+    private void visitPageCells(CellVisitor visitor) {
         if (target == null) {
             return;
         }
@@ -407,7 +434,7 @@ final class SqWidget extends dwF {
                 double start = target.range().beat(page, column);
                 double end = Math.min(start + SqGrid.STEP, target.range().end());
                 if (end > start) {
-                    visitor.accept(SqGrid.cell(notes, key, target.channel(), start, end));
+                    visitor.accept(key, SqGrid.cell(notes, key, target.channel(), start, end));
                 }
             }
         }
@@ -418,8 +445,11 @@ final class SqWidget extends dwF {
             Edit edit = PianoRoll.edit("Randomise Step Velocities");
             int[] count = {0};
             Set<Note> chosen = selectedNotes();
-            visitPageCells(cell -> {
-                if (cell.note() != null && (chosen.isEmpty() || chosen.contains(cell.note().note().note()))) {
+            visitPageCells((key, cell) -> {
+                boolean inScope = !chosen.isEmpty()
+                        ? chosen.contains(cell.note().note().note())
+                        : state.scoped.isEmpty() || state.scoped.contains(key);
+                if (cell.note() != null && inScope) {
                     // Keep it musical: a jittered band rather than noise across the whole range.
                     double velocity = 0.40 + random.nextDouble() * 0.60;
                     edit.setVelocity(cell.note().note().note(), velocity);
@@ -427,9 +457,9 @@ final class SqWidget extends dwF {
                 }
             });
             if (count[0] == 0) {
-                PianoRoll.notification(chosen.isEmpty()
+                PianoRoll.notification(chosen.isEmpty() && state.scoped.isEmpty()
                         ? "RESS-SQ: no steps on this page."
-                        : "RESS-SQ: none of the selected notes are steps on this page.");
+                        : "RESS-SQ: no steps in the scope on this page.");
                 return;
             }
             edit.apply();
@@ -444,7 +474,7 @@ final class SqWidget extends dwF {
         try {
             Edit edit = PianoRoll.edit("Clear Steps");
             int[] count = {0};
-            visitPageCells(cell -> {
+            visitPageCells((key, cell) -> {
                 if (cell.note() != null) {
                     edit.remove(cell.note().note().note());
                     count[0]++;
@@ -573,13 +603,16 @@ final class SqWidget extends dwF {
             double height, SZB text, boolean muted) {
         int key = pitch.key();
         double dot = Math.min(wGt(7), Math.max(wGt(4), height - wGt(4)));
-        rectangle(graphics, wGt(4), y + (height - dot) / 2, dot, dot,
+        boolean scoped = state.scoped.contains(key);
+        if (scoped) {
+            rectangle(graphics, 0, y, labels() - wGt(2), height, ACCENT.beI(0.18f));
+        }
+        pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
+        rectangle(graphics, markLeft(), y + (height - dot) / 2, dot, dot,
                 state.marked.contains(key) ? ACCENT : CELL);
-        boolean selected = selectedKeys.contains(key);
+        boolean selected = selectedKeys.contains(key) || scoped;
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
-        pill(graphics, selectLeft(), y, height, "→", false, text, selected);
-        pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
             int limit = Math.max(3, (int) ((muteLeft() - wGt(20)) / Math.max(1, wGt(7))));
@@ -587,6 +620,16 @@ final class SqWidget extends dwF {
                     name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
                     text.beI(muted ? 0.45f : 1f));
         }
+    }
+
+    /** Centres a short label in a box of this width, by estimated glyph width. */
+    private double centered(String label, double width) {
+        double glyph = 0;
+        for (int i = 0; i < label.length(); i++) {
+            char c = label.charAt(i);
+            glyph += c == 'M' || c == 'N' ? 9 : c == ' ' ? 4 : 6.5;
+        }
+        return Math.max(0, (width - wGt((long) Math.ceil(glyph))) / 2);
     }
 
     private void pill(com.bitwig.graphics.ijY graphics, double x, double y, double height,
@@ -599,8 +642,7 @@ final class SqWidget extends dwF {
             String label, boolean on, SZB text, boolean highlight) {
         SZB background = on ? ACCENT : highlight ? ACCENT.beI(0.35f) : CELL;
         rectangle(graphics, x, y + wGt(1), wGt(PILL), Math.max(wGt(3), height - wGt(2)), background);
-        // Roughly centred: a single character at the default size is about 7 pixels.
-        graphics.beI(x + (wGt(PILL) - wGt(7)) / 2, y + height * 0.5 + wGt(3), label,
+        graphics.beI(x + centered(label, wGt(PILL)), y + height * 0.5 + wGt(3), label,
                 text.beI(on || highlight ? 1f : 0.55f));
     }
 
@@ -652,6 +694,9 @@ final class SqWidget extends dwF {
                 OCx();
             });
         }
+        if (y >= bottom() && x >= selectAllLeft() && x < selectAllLeft() + selectAllWidth()) {
+            return control(this::toggleScopeAll);
+        }
         if (y >= bottom() && x >= wGt(4) && x < wGt(52)) {
             return control(() -> {
                 fold = !fold;
@@ -663,7 +708,13 @@ final class SqWidget extends dwF {
         if (x < labels() - wGt(1) && y >= top() && y < bottom()) {
             int key = keyAt(y);
             if (key >= 0) {
-                if (x < wGt(13)) {
+                if (x >= renameLeft() && x < renameLeft() + wGt(PILL)) {
+                    return control(() -> {
+                        pickerRow = key;
+                        OCx();
+                    });
+                }
+                if (x >= markLeft() - wGt(2) && x < markLeft() + wGt(11)) {
                     return control(() -> toggleMark(key));
                 }
                 if (x >= muteLeft() && x < muteLeft() + wGt(PILL)) {
@@ -671,15 +722,6 @@ final class SqWidget extends dwF {
                 }
                 if (x >= soloLeft() && x < soloLeft() + wGt(PILL)) {
                     return control(() -> toggleSolo(key));
-                }
-                if (x >= selectLeft() && x < selectLeft() + wGt(PILL)) {
-                    return control(() -> selectRow(key));
-                }
-                if (x >= renameLeft() && x < renameLeft() + wGt(PILL)) {
-                    return control(() -> {
-                        pickerRow = key;
-                        OCx();
-                    });
                 }
                 return null;
             }
@@ -892,41 +934,20 @@ final class SqWidget extends dwF {
         }
     }
 
-    /**
-     * Puts every note of one pitch in the clip into the editor's selection, so RND
-     * and Bitwig's own tools work on that row. The selection object comes from a
-     * note of the row; Hnt(Collection) replaces it.
-     */
-    private void selectRow(int key) {
+    /** Every row on show joins the RND scope, or leaves it when they all already have. */
+    private void toggleScopeAll() {
         if (target == null) {
             return;
         }
-        try {
-            List<c1N> chosen = new ArrayList<>();
-            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
-                if (event.key() == key) {
-                    Object bitwigNote = event.note().note().bitwigNote();
-                    if (bitwigNote instanceof c1N note) {
-                        chosen.add(note);
-                    }
-                }
+        if (allScoped()) {
+            state.scoped.clear();
+        } else {
+            for (int index : shownRows) {
+                state.scoped.add(target.rows().get(index).key());
             }
-            if (chosen.isEmpty()) {
-                PianoRoll.notification("RESS-SQ: no notes on this row.");
-                return;
-            }
-            // The lane the notes live on is what holds their selection state.
-            Object lane = chosen.get(0).bcT();
-            if (!(lane instanceof PiG selection)) {
-                RessSq.MOD.log("Could not find the note lane for the row selection");
-                return;
-            }
-            selection.sCA(chosen);
-            recomputeSelected();
-            OCx();
-        } catch (RuntimeException | LinkageError failure) {
-            RessSq.MOD.log("Could not select the row\'s notes", failure);
         }
+        save();
+        OCx();
     }
 
     // ---- row state that survives a restart -------------------------------------
@@ -944,6 +965,7 @@ final class SqWidget extends dwF {
             loaded.marked.addAll(parseInts(settings.get(prefix + "marked", "")));
             loaded.muted.addAll(parseInts(settings.get(prefix + "muted", "")));
             loaded.solo.addAll(parseInts(settings.get(prefix + "solo", "")));
+            loaded.scoped.addAll(parseInts(settings.get(prefix + "scoped", "")));
             loaded.names.putAll(parseNames(settings.get(prefix + "names", "")));
             loaded.savedVelocity.putAll(parseValues(settings.get(prefix + "velocity", "")));
         } catch (RuntimeException | LinkageError failure) {
@@ -962,6 +984,7 @@ final class SqWidget extends dwF {
             settings.put(prefix + "marked", joinInts(state.marked));
             settings.put(prefix + "muted", joinInts(state.muted));
             settings.put(prefix + "solo", joinInts(state.solo));
+            settings.put(prefix + "scoped", joinInts(state.scoped));
             settings.put(prefix + "names", joinNames(state.names));
             settings.put(prefix + "velocity", joinValues(state.savedVelocity));
         } catch (RuntimeException | LinkageError failure) {
