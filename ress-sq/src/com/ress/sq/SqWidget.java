@@ -14,7 +14,6 @@ import bitwig.obf.eqx; // mouse button
 import bml.pianoroll.Edit;
 import bml.pianoroll.Listening;
 import bml.pianoroll.Note;
-import bml.pianoroll.NoteSelection;
 import bml.pianoroll.PianoRoll;
 import bml.pianoroll.Refused;
 import com.bitwig.base.geom.ijY; // widget size
@@ -57,7 +56,6 @@ final class SqWidget extends dwF {
     private static final Map<String, RowState> STATES = new HashMap<>();
     private String stateKey;
     private RowState state = new RowState();
-    private Set<Integer> selectedKeys = Set.of();
 
     private Set<Integer> mutedKeys = Set.of();
 
@@ -74,8 +72,6 @@ final class SqWidget extends dwF {
     }
     private boolean fold;
     private int pickerRow = -1;
-    private NoteSelection selection;
-    private Listening selectionListening;
     private final java.util.Random random = new java.util.Random();
     private CellGesture gesture;
     private dsB frames;
@@ -83,6 +79,9 @@ final class SqWidget extends dwF {
     private boolean subscribing;
     private long nextRefresh;
     private long lastFrameTime;
+    private int wheelValue;
+    private boolean wheelSeen;
+    private boolean wheelLogged;
 
     private enum Parameter {
         VELOCITY("Velocity", 1, 127, 1),
@@ -177,11 +176,6 @@ final class SqWidget extends dwF {
             changes.stop();
             changes = null;
         }
-        if (selectionListening != null) {
-            selectionListening.stop();
-            selectionListening = null;
-            selection = null;
-        }
         nextRefresh = 0;
     }
 
@@ -200,10 +194,6 @@ final class SqWidget extends dwF {
             subscribing = false;
             if (frames == null && view.active.getBoolValue() && TUb()) {
                 changes = PianoRoll.onChange(() -> nextRefresh = 0);
-                selectionListening = PianoRoll.onSelectionChange(selected -> {
-                    selection = selected;
-                    nextRefresh = 0;
-                });
                 frames = dsB.beI(frame -> {
                     if (!view.active.getBoolValue() || !TUb()) {
                         deactivate();
@@ -256,7 +246,6 @@ final class SqWidget extends dwF {
                 OCx();
             }
             recomputeMuted();
-            recomputeSelected();
         } catch (RuntimeException | LinkageError failure) {
             deactivate();
             target = null;
@@ -274,7 +263,7 @@ final class SqWidget extends dwF {
     private double toolsWidth() { return wGt(104); }
     private double toolsStart() { return rtK() - toolsWidth(); }
     private double toolWidth() { return toolsWidth() / TOOLS; }
-    private double tabStart() { return Math.max(wGt(114), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
+    private double tabStart() { return Math.max(wGt(65), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
     private double tabWidth() { return Math.min(wGt(70), Math.max(1, (rtK() - toolsWidth() - tabStart()) / PARAMETERS.length)); }
     private int visibleRows() { return Math.max(1, (int) Math.ceil((bottom() - top()) / rowHeight())); }
     private int maxFirstRow() { return Math.max(0, shownRows.size() - visibleRows()); }
@@ -310,23 +299,13 @@ final class SqWidget extends dwF {
     private double pillsRight() { return labels() - wGt(7); }
     private double soloLeft() { return pillsRight() - wGt(PILL); }
     private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
+    private double scopeLeft() { return muteLeft() - wGt(PILL + PILL_GAP); }
     private double renameLeft() { return wGt(4); }
     private double markLeft() { return wGt(4 + PILL + 4); }
     private double nameLeft() { return wGt(4 + PILL + 4 + 13); }
-    /** Footer: select every note of the rows on show, for RND. */
-    private double selectAllLeft() { return wGt(54); }
-    private double selectAllWidth() { return wGt(52); }
-
-    private boolean allScoped() {
-        if (shownRows.isEmpty() || target == null) {
-            return false;
-        }
-        for (int index : shownRows) {
-            if (!state.scoped.contains(target.rows().get(index).key())) {
-                return false;
-            }
-        }
-        return true;
+    /** RND and CLR touch the marked rows, or every row when none is marked. */
+    private boolean inScope(int key) {
+        return state.scoped.isEmpty() || state.scoped.contains(key);
     }
 
     private int cellAt(double x, double y) {
@@ -383,14 +362,6 @@ final class SqWidget extends dwF {
             rectangle(graphics, foldX, bottom() + wGt(20), wGt(46), wGt(1), ACCENT);
         }
         graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(fold ? 1f : 0.7f));
-        boolean all = allScoped();
-        double selectX = selectAllLeft();
-        rectangle(graphics, selectX, bottom() + wGt(3), selectAllWidth(), wGt(18), all ? BEAT : CELL);
-        if (all) {
-            rectangle(graphics, selectX, bottom() + wGt(20), selectAllWidth(), wGt(1), ACCENT);
-        }
-        graphics.beI(selectX + centered("SELECT", selectAllWidth()), bottom() + wGt(16), "SELECT",
-                text.beI(all ? 1f : 0.7f));
         for (Parameter tab : PARAMETERS) {
             double x = tabStart() + tab.ordinal() * tabWidth();
             boolean selected = parameter == tab;
@@ -444,12 +415,8 @@ final class SqWidget extends dwF {
         try {
             Edit edit = PianoRoll.edit("Randomise Step Velocities");
             int[] count = {0};
-            Set<Note> chosen = selectedNotes();
             visitPageCells((key, cell) -> {
-                boolean inScope = !chosen.isEmpty()
-                        ? chosen.contains(cell.note().note().note())
-                        : state.scoped.isEmpty() || state.scoped.contains(key);
-                if (cell.note() != null && inScope) {
+                if (cell.note() != null && inScope(key)) {
                     // Keep it musical: a jittered band rather than noise across the whole range.
                     double velocity = 0.40 + random.nextDouble() * 0.60;
                     edit.setVelocity(cell.note().note().note(), velocity);
@@ -457,9 +424,9 @@ final class SqWidget extends dwF {
                 }
             });
             if (count[0] == 0) {
-                PianoRoll.notification(chosen.isEmpty() && state.scoped.isEmpty()
+                PianoRoll.notification(state.scoped.isEmpty()
                         ? "RESS-SQ: no steps on this page."
-                        : "RESS-SQ: no steps in the scope on this page.");
+                        : "RESS-SQ: no steps on the marked rows.");
                 return;
             }
             edit.apply();
@@ -475,13 +442,15 @@ final class SqWidget extends dwF {
             Edit edit = PianoRoll.edit("Clear Steps");
             int[] count = {0};
             visitPageCells((key, cell) -> {
-                if (cell.note() != null) {
+                if (cell.note() != null && inScope(key)) {
                     edit.remove(cell.note().note().note());
                     count[0]++;
                 }
             });
             if (count[0] == 0) {
-                PianoRoll.notification("RESS-SQ: no steps on this page.");
+                PianoRoll.notification(state.scoped.isEmpty()
+                        ? "RESS-SQ: no steps on this page."
+                        : "RESS-SQ: no steps on the marked rows.");
                 return;
             }
             edit.apply();
@@ -610,7 +579,7 @@ final class SqWidget extends dwF {
         pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         rectangle(graphics, markLeft(), y + (height - dot) / 2, dot, dot,
                 state.marked.contains(key) ? ACCENT : CELL);
-        boolean selected = selectedKeys.contains(key) || scoped;
+        pill(graphics, scopeLeft(), y, height, "R", scoped, text);
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
         if (height >= wGt(11)) {
@@ -694,9 +663,6 @@ final class SqWidget extends dwF {
                 OCx();
             });
         }
-        if (y >= bottom() && x >= selectAllLeft() && x < selectAllLeft() + selectAllWidth()) {
-            return control(this::toggleScopeAll);
-        }
         if (y >= bottom() && x >= wGt(4) && x < wGt(52)) {
             return control(() -> {
                 fold = !fold;
@@ -716,6 +682,9 @@ final class SqWidget extends dwF {
                 }
                 if (x >= markLeft() - wGt(2) && x < markLeft() + wGt(11)) {
                     return control(() -> toggleMark(key));
+                }
+                if (x >= scopeLeft() && x < scopeLeft() + wGt(PILL)) {
+                    return control(() -> toggleScope(key));
                 }
                 if (x >= muteLeft() && x < muteLeft() + wGt(PILL)) {
                     return control(() -> toggleMute(key));
@@ -840,21 +809,6 @@ final class SqWidget extends dwF {
 
     private boolean isMuted(int key) { return mutedKeys.contains(key); }
 
-    private void recomputeSelected() {
-        Set<Integer> keys = new HashSet<>();
-        try {
-            NoteSelection current = selection;
-            if (current != null) {
-                for (Note note : current.notes()) {
-                    keys.add(note.key());
-                }
-            }
-        } catch (RuntimeException refused) {
-            keys.clear();
-        }
-        selectedKeys = Set.copyOf(keys);
-    }
-
     private void recomputeMuted() {
         if (target == null) {
             mutedKeys = Set.of();
@@ -869,85 +823,6 @@ final class SqWidget extends dwF {
             }
         }
         mutedKeys = Set.copyOf(effective);
-    }
-
-    private void toggleMark(int key) {
-        if (!state.marked.remove(key)) {
-            state.marked.add(key);
-        }
-        shownRows = computeShown(target);
-        firstRow = Math.min(firstRow, maxFirstRow());
-        save();
-        OCx();
-    }
-
-    private void toggleMute(int key) {
-        if (!state.muted.remove(key)) {
-            state.muted.add(key);
-        }
-        recomputeMuted();
-        applyMute("Mute " + rowName(key));
-        save();
-        OCx();
-    }
-
-    private void toggleSolo(int key) {
-        if (!state.solo.remove(key)) {
-            state.solo.add(key);
-        }
-        recomputeMuted();
-        applyMute("Solo " + rowName(key));
-        save();
-        OCx();
-    }
-
-    /**
-     * Muting silences a row by taking its notes to velocity 0 and keeps the velocity
-     * each note had, so unmuting puts it back. One undo step for the whole row, and
-     * nothing is removed from the clip.
-     */
-    private void applyMute(String label) {
-        if (target == null) {
-            return;
-        }
-        try {
-            Edit edit = PianoRoll.edit(label);
-            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
-                Note note = event.note().note();
-                String id = event.key() + "@" + Math.round(event.start() * 96);
-                Double saved = state.savedVelocity.get(id);
-                if (mutedKeys.contains(event.key())) {
-                    if (saved == null) {
-                        state.savedVelocity.put(id, event.velocity());
-                        edit.setVelocity(note, 0);
-                    }
-                } else if (saved != null) {
-                    state.savedVelocity.remove(id);
-                    edit.setVelocity(note, saved);
-                }
-            }
-            edit.apply();
-        } catch (Refused refused) {
-            PianoRoll.notification(refused.getMessage());
-        } catch (RuntimeException | LinkageError failure) {
-            RessSq.MOD.log("Could not mute the row", failure);
-        }
-    }
-
-    /** Every row on show joins the RND scope, or leaves it when they all already have. */
-    private void toggleScopeAll() {
-        if (target == null) {
-            return;
-        }
-        if (allScoped()) {
-            state.scoped.clear();
-        } else {
-            for (int index : shownRows) {
-                state.scoped.add(target.rows().get(index).key());
-            }
-        }
-        save();
-        OCx();
     }
 
     // ---- row state that survives a restart -------------------------------------
@@ -1071,13 +946,75 @@ final class SqWidget extends dwF {
         return values;
     }
 
-    /** The notes selected in the editor, empty when the selection holds none. */
-    private Set<Note> selectedNotes() {
+    private void toggleMark(int key) {
+        if (!state.marked.remove(key)) {
+            state.marked.add(key);
+        }
+        shownRows = computeShown(target);
+        firstRow = Math.min(firstRow, maxFirstRow());
+        save();
+        OCx();
+    }
+
+    /** Marks this row for RND and CLR; with no row marked they work on every row shown. */
+    private void toggleScope(int key) {
+        if (!state.scoped.remove(key)) {
+            state.scoped.add(key);
+        }
+        save();
+        OCx();
+    }
+
+    private void toggleMute(int key) {
+        if (!state.muted.remove(key)) {
+            state.muted.add(key);
+        }
+        recomputeMuted();
+        applyMute("Mute " + rowName(key));
+        save();
+        OCx();
+    }
+
+    private void toggleSolo(int key) {
+        if (!state.solo.remove(key)) {
+            state.solo.add(key);
+        }
+        recomputeMuted();
+        applyMute("Solo " + rowName(key));
+        save();
+        OCx();
+    }
+
+    /**
+     * Muting silences a row by taking its notes to velocity 0 and keeps the velocity
+     * each note had, so unmuting puts it back. One undo step for the whole row, and
+     * nothing is removed from the clip.
+     */
+    private void applyMute(String label) {
+        if (target == null) {
+            return;
+        }
         try {
-            NoteSelection current = selection;
-            return current == null ? Set.of() : Set.copyOf(current.notes());
-        } catch (RuntimeException refused) {
-            return Set.of();
+            Edit edit = PianoRoll.edit(label);
+            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
+                Note note = event.note().note();
+                String id = event.key() + "@" + Math.round(event.start() * 96);
+                Double saved = state.savedVelocity.get(id);
+                if (mutedKeys.contains(event.key())) {
+                    if (saved == null) {
+                        state.savedVelocity.put(id, event.velocity());
+                        edit.setVelocity(note, 0);
+                    }
+                } else if (saved != null) {
+                    state.savedVelocity.remove(id);
+                    edit.setVelocity(note, saved);
+                }
+            }
+            edit.apply();
+        } catch (Refused refused) {
+            PianoRoll.notification(refused.getMessage());
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not mute the row", failure);
         }
     }
 
@@ -1098,11 +1035,30 @@ final class SqWidget extends dwF {
     @Override
     public void beI(dLp event) {
         try {
-            if (view.active.getBoolValue() && target != null) {
-                int delta = event.iFu();
-                if (delta != 0) {
-                    scrollRows(-Integer.signum(delta) * WHEEL_ROWS);
+            int value = event.iFu();
+            if (!wheelLogged) {
+                wheelLogged = true;
+                RessSq.MOD.log("wheel: id=" + event.fmw() + " value=" + value
+                        + " x=" + event.wLf() + " y=" + event.dvk());
+            }
+            if (!view.active.getBoolValue() || target == null) {
+                return;
+            }
+            // The payload is a running value on some mice and a notch count on others.
+            int delta;
+            if (Math.abs(value) <= 8) {
+                delta = value;
+            } else {
+                if (!wheelSeen) {
+                    wheelSeen = true;
+                    wheelValue = value;
+                    return;
                 }
+                delta = value - wheelValue;
+                wheelValue = value;
+            }
+            if (delta != 0) {
+                scrollRows(-Integer.signum(delta) * WHEEL_ROWS);
             }
         } catch (RuntimeException | LinkageError failure) {
             RessSq.MOD.log("Could not scroll the step rows", failure);
