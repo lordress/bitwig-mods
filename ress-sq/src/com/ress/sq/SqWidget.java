@@ -55,13 +55,22 @@ final class SqWidget extends dwF {
     private boolean follow = true;
     /** Rows the grid is showing, in display order: all rows, or only the marked ones when folded. */
     private List<Integer> shownRows = List.of();
-    private final Set<Integer> markedRows = new HashSet<>();
-    private final Set<Integer> mutedRows = new HashSet<>();
-    private final Set<Integer> soloRows = new HashSet<>();
-    private final Map<Integer, String> rowNames = new HashMap<>();
-    /** Velocities the mute replaced, so unmuting puts them back. */
-    private final Map<Note, Double> savedVelocity = new HashMap<>();
+    /** Row state per clip, so switching clips and coming back finds it again. */
+    private static final Map<Object, RowState> STATES = new java.util.WeakHashMap<>();
+    private RowState state = new RowState();
+    private Set<Integer> selectedKeys = Set.of();
+
     private Set<Integer> mutedKeys = Set.of();
+
+    /** Everything the label column remembers about one clip. */
+    static final class RowState {
+        final Set<Integer> marked = new HashSet<>();
+        final Set<Integer> muted = new HashSet<>();
+        final Set<Integer> solo = new HashSet<>();
+        final Map<Integer, String> names = new HashMap<>();
+        /** Velocities the mute replaced, so unmuting puts them back. */
+        final Map<Note, Double> savedVelocity = new HashMap<>();
+    }
     private boolean fold;
     private int pickerRow = -1;
     private NoteSelection selection;
@@ -190,7 +199,10 @@ final class SqWidget extends dwF {
             subscribing = false;
             if (frames == null && view.active.getBoolValue() && TUb()) {
                 changes = PianoRoll.onChange(() -> nextRefresh = 0);
-                selectionListening = PianoRoll.onSelectionChange(selected -> selection = selected);
+                selectionListening = PianoRoll.onSelectionChange(selected -> {
+                    selection = selected;
+                    nextRefresh = 0;
+                });
                 frames = dsB.beI(frame -> {
                     if (!view.active.getBoolValue() || !TUb()) {
                         deactivate();
@@ -223,6 +235,9 @@ final class SqWidget extends dwF {
                 OCx();
             }
             if (clipChanged) {
+                Object clipKey = current == null ? null : current.clip().bitwigClip();
+                state = clipKey == null ? new RowState()
+                        : STATES.computeIfAbsent(clipKey, ignore -> new RowState());
                 playingColumn = -1;
                 page = 0;
                 firstRow = current != null && current.chromatic() ? 63 : 0;
@@ -240,6 +255,7 @@ final class SqWidget extends dwF {
                 OCx();
             }
             recomputeMuted();
+            recomputeSelected();
         } catch (RuntimeException | LinkageError failure) {
             deactivate();
             target = null;
@@ -268,7 +284,7 @@ final class SqWidget extends dwF {
         }
         List<Integer> shown = new ArrayList<>();
         for (int i = 0; i < clip.rows().size(); i++) {
-            if (!fold || markedRows.contains(clip.rows().get(i).key())) {
+            if (!fold || state.marked.contains(clip.rows().get(i).key())) {
                 shown.add(i);
             }
         }
@@ -288,9 +304,15 @@ final class SqWidget extends dwF {
         return slot < 0 || target == null ? -1 : target.rows().get(shownRows.get(slot)).key();
     }
 
-    private double muteLeft() { return labels() - wGt(50); }
-    private double soloLeft() { return labels() - wGt(35); }
-    private double selectLeft() { return labels() - wGt(20); }
+    private static final int PILL = 17;
+    private static final int PILL_GAP = 4;
+    private double pillsRight() { return labels() - wGt(7); }
+    private double selectLeft() { return pillsRight() - wGt(PILL); }
+    private double soloLeft() { return selectLeft() - wGt(PILL + PILL_GAP); }
+    private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
+    /** Only the pitch token opens the picker, not the whole label column. */
+    private double nameLeft() { return wGt(17); }
+    private double nameRight() { return wGt(52); }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
@@ -552,14 +574,15 @@ final class SqWidget extends dwF {
         int key = pitch.key();
         double dot = Math.min(wGt(7), Math.max(wGt(4), height - wGt(4)));
         rectangle(graphics, wGt(4), y + (height - dot) / 2, dot, dot,
-                markedRows.contains(key) ? ACCENT : CELL);
-        pill(graphics, muteLeft(), y, height, "M", mutedRows.contains(key), text);
-        pill(graphics, soloLeft(), y, height, "S", soloRows.contains(key), text);
-        pill(graphics, selectLeft(), y, height, "→", false, text);
+                state.marked.contains(key) ? ACCENT : CELL);
+        boolean selected = selectedKeys.contains(key);
+        pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
+        pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
+        pill(graphics, selectLeft(), y, height, "→", false, text, selected);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
-            int limit = Math.max(3, (int) ((muteLeft() - wGt(18)) / Math.max(1, wGt(7))));
-            graphics.beI(wGt(17), y + height * 0.5 + wGt(4),
+            int limit = Math.max(3, (int) ((muteLeft() - wGt(20)) / Math.max(1, wGt(7))));
+            graphics.beI(nameLeft(), y + height * 0.5 + wGt(4),
                     name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
                     text.beI(muted ? 0.45f : 1f));
         }
@@ -567,13 +590,22 @@ final class SqWidget extends dwF {
 
     private void pill(com.bitwig.graphics.ijY graphics, double x, double y, double height,
             String label, boolean on, SZB text) {
-        rectangle(graphics, x, y + wGt(1), wGt(13), Math.max(wGt(3), height - wGt(2)), on ? ACCENT : CELL);
-        graphics.beI(x + wGt(4), y + height * 0.5 + wGt(3), label, text.beI(on ? 1f : 0.55f));
+        pill(graphics, x, y, height, label, on, text, false);
+    }
+
+    /** A pill with its own left and right padding, the glyph centred in it. */
+    private void pill(com.bitwig.graphics.ijY graphics, double x, double y, double height,
+            String label, boolean on, SZB text, boolean highlight) {
+        SZB background = on ? ACCENT : highlight ? ACCENT.beI(0.35f) : CELL;
+        rectangle(graphics, x, y + wGt(1), wGt(PILL), Math.max(wGt(3), height - wGt(2)), background);
+        // Roughly centred: a single character at the default size is about 7 pixels.
+        graphics.beI(x + (wGt(PILL) - wGt(7)) / 2, y + height * 0.5 + wGt(3), label,
+                text.beI(on || highlight ? 1f : 0.55f));
     }
 
     /** The row's name: the mod's own label when it has one, else Bitwig's pad or pitch name. */
     private String rowLabel(SqClip.Row pitch) {
-        String custom = rowNames.get(pitch.key());
+        String custom = state.names.get(pitch.key());
         if (custom == null) {
             return pitch.name();
         }
@@ -633,19 +665,22 @@ final class SqWidget extends dwF {
                 if (x < wGt(13)) {
                     return control(() -> toggleMark(key));
                 }
-                if (x >= muteLeft() && x < muteLeft() + wGt(13)) {
+                if (x >= muteLeft() && x < muteLeft() + wGt(PILL)) {
                     return control(() -> toggleMute(key));
                 }
-                if (x >= soloLeft() && x < soloLeft() + wGt(13)) {
+                if (x >= soloLeft() && x < soloLeft() + wGt(PILL)) {
                     return control(() -> toggleSolo(key));
                 }
-                if (x >= selectLeft() && x < selectLeft() + wGt(13)) {
+                if (x >= selectLeft() && x < selectLeft() + wGt(PILL)) {
                     return control(() -> selectRow(key));
                 }
-                return control(() -> {
-                    pickerRow = key;
-                    OCx();
-                });
+                if (x >= nameLeft() && x < nameRight()) {
+                    return control(() -> {
+                        pickerRow = key;
+                        OCx();
+                    });
+                }
+                return null;
             }
         }
         double right = gridRight() - wGt(6);
@@ -741,9 +776,9 @@ final class SqWidget extends dwF {
             return;
         }
         if (choice == PICKER_CLEAR) {
-            rowNames.remove(key);
+            state.names.remove(key);
         } else {
-            rowNames.put(key, RENAME_CHOICES[choice]);
+            state.names.put(key, RENAME_CHOICES[choice]);
         }
         OCx();
     }
@@ -761,15 +796,30 @@ final class SqWidget extends dwF {
 
     private boolean isMuted(int key) { return mutedKeys.contains(key); }
 
+    private void recomputeSelected() {
+        Set<Integer> keys = new HashSet<>();
+        try {
+            NoteSelection current = selection;
+            if (current != null) {
+                for (Note note : current.notes()) {
+                    keys.add(note.key());
+                }
+            }
+        } catch (RuntimeException refused) {
+            keys.clear();
+        }
+        selectedKeys = Set.copyOf(keys);
+    }
+
     private void recomputeMuted() {
         if (target == null) {
             mutedKeys = Set.of();
             return;
         }
-        Set<Integer> effective = new LinkedHashSet<>(mutedRows);
-        if (!soloRows.isEmpty()) {
+        Set<Integer> effective = new LinkedHashSet<>(state.muted);
+        if (!state.solo.isEmpty()) {
             for (SqClip.Row row : target.rows()) {
-                if (!soloRows.contains(row.key())) {
+                if (!state.solo.contains(row.key())) {
                     effective.add(row.key());
                 }
             }
@@ -778,8 +828,8 @@ final class SqWidget extends dwF {
     }
 
     private void toggleMark(int key) {
-        if (!markedRows.remove(key)) {
-            markedRows.add(key);
+        if (!state.marked.remove(key)) {
+            state.marked.add(key);
         }
         shownRows = computeShown(target);
         firstRow = Math.min(firstRow, maxFirstRow());
@@ -787,8 +837,8 @@ final class SqWidget extends dwF {
     }
 
     private void toggleMute(int key) {
-        if (!mutedRows.remove(key)) {
-            mutedRows.add(key);
+        if (!state.muted.remove(key)) {
+            state.muted.add(key);
         }
         recomputeMuted();
         applyMute("Mute " + rowName(key));
@@ -796,8 +846,8 @@ final class SqWidget extends dwF {
     }
 
     private void toggleSolo(int key) {
-        if (!soloRows.remove(key)) {
-            soloRows.add(key);
+        if (!state.solo.remove(key)) {
+            state.solo.add(key);
         }
         recomputeMuted();
         applyMute("Solo " + rowName(key));
@@ -817,14 +867,14 @@ final class SqWidget extends dwF {
             Edit edit = PianoRoll.edit(label);
             for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
                 Note note = event.note().note();
-                Double saved = savedVelocity.get(note);
+                Double saved = state.savedVelocity.get(note);
                 if (mutedKeys.contains(event.key())) {
                     if (saved == null) {
-                        savedVelocity.put(note, event.velocity());
+                        state.savedVelocity.put(note, event.velocity());
                         edit.setVelocity(note, 0);
                     }
                 } else if (saved != null) {
-                    savedVelocity.remove(note);
+                    state.savedVelocity.remove(note);
                     edit.setVelocity(note, saved);
                 }
             }
@@ -859,11 +909,14 @@ final class SqWidget extends dwF {
                 PianoRoll.notification("RESS-SQ: no notes on this row.");
                 return;
             }
-            PiG selection = chosen.get(0).IDq();
-            if (selection == null) {
+            // The lane the notes live on is what holds their selection state.
+            Object lane = chosen.get(0).bcT();
+            if (!(lane instanceof PiG selection)) {
+                RessSq.MOD.log("Could not find the note lane for the row selection");
                 return;
             }
             selection.sCA(chosen);
+            recomputeSelected();
             OCx();
         } catch (RuntimeException | LinkageError failure) {
             RessSq.MOD.log("Could not select the row\'s notes", failure);

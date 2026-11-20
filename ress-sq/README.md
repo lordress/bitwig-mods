@@ -38,11 +38,16 @@ The label column holds one control row per pitch:
   same way.
 - **→** — selects every note of that pitch in the clip, so RND and Bitwig's own
   tools work on the row.
-- **Rename** — click the row's name to pick one (Kick, Snare, Clap, …). The row
+- **Rename** — click the row's pitch name (`B2`, not the whole column) to pick one (Kick, Snare, Clap, …). The row
   then reads `B2 Kick`, with Bitwig's own pitch name kept in front. **Clear** puts
   Bitwig's name back.
 
 Muted rows draw dimmed and their steps drop out of the **RND** and **CLR** tools.
+The **→** pill tints softly while that row's notes are selected.
+
+Marks, names, mutes and solos belong to the clip: switch to another clip and come
+back and the row state is as you left it. Mutes are stored with the velocities
+they replaced, so unmuting still restores them.
 
 ## What RESS-SQ adds
 
@@ -61,7 +66,7 @@ Muted rows draw dimmed and their steps drop out of the **RND** and **CLR** tools
 ## Install with Patchbay
 
 1. Install Patchbay Mod Loader and patch Bitwig from its window.
-2. **Mods → Add Mod…** and pick `ress-sq-0.1.4.zip` (do not unpack it).
+2. **Mods → Add Mod…** and pick `ress-sq-0.1.5.zip` (do not unpack it).
 3. Tick **Framework: Piano Roll** (it ships with Patchbay) and **RESS-SQ**, then
    click **Load**.
 
@@ -89,7 +94,7 @@ python3 tools/build_releases.py \
 
 It compiles the helper against Bitwig's own jar, validates every hook with the mod
 kit, generates the finished `mod.json` from the hooks it reports, and writes
-`dist/ress-sq-0.1.4.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
+`dist/ress-sq-0.1.5.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
 offline check and publishing.
 
 ## Layout
