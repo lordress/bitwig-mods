@@ -2,6 +2,12 @@ package com.ress.sq;
 
 import bitwig.obf.NdS; // Drum/Hybrid mode
 import bitwig.obf.cjx; // fixed widget size
+import bitwig.obf.Hub; // a short MIDI message, status and two data bytes packed
+import bitwig.obf.P2Z; // the thread that reads incoming MIDI from the audio engine
+import bitwig.obf.aEx; // the computer keyboard's note input
+import bitwig.obf.ohx; // the receivers of one MIDI input port
+import bitwig.obf.qPh; // a MIDI message
+import bitwig.obf.usb; // the connection to the audio engine's MIDI
 import bitwig.obf.aJI; // Detail Editor mode button
 import bitwig.obf.aNi; // Detail Editor panel
 import bitwig.obf.baN; // Detail Editor mode action
@@ -19,7 +25,9 @@ import bml.api.Return;
 import bml.api.This;
 import com.bitwig.base.geom.mLC;
 import com.bitwig.flt.widget.core.timeline.WRA; // Detail Editor mode strip
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -41,6 +49,81 @@ public final class RessSq {
             VIEWS.put(panel, new WeakReference<>(view));
         }
         return view;
+    }
+
+    private static final AtomicIntegerArray HELD = new AtomicIntegerArray(128);
+    /** The pitch of the most recent note-on, or -1 when nothing is held. */
+    static volatile int pressed = -1;
+
+    /**
+     * Every short MIDI message Bitwig's reader hands to a port, and the computer
+     * keyboard's notes. Only note on and off are read; the call is made as Bitwig
+     * makes it, so nothing about the input changes.
+     */
+    static void read(int packed) {
+        int status = packed & 0xFF;
+        int data1 = (packed >> 8) & 0x7F;
+        int data2 = (packed >> 16) & 0x7F;
+        int kind = status & 0xF0;
+        if (data1 < 0) {
+            return;
+        }
+        if (kind == 0x90 && data2 > 0) {
+            HELD.set(data1, 1);
+            pressed = data1;
+        } else if (kind == 0x80 || (kind == 0x90 && data2 == 0)) {
+            HELD.set(data1, 0);
+            if (RessSq.pressed == data1) {
+                RessSq.pressed = -1;
+                for (int key = 0; key < 128; key++) {
+                    if (HELD.get(key) != 0) {
+                        RessSq.pressed = key;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /** The pitch name of the note being played, empty when nothing is. */
+    static String pressedLabel() {
+        int key = pressed;
+        return key < 0 ? "" : com.bitwig.base.sound.YjF.beI(key, true);
+    }
+
+    @Hook(target = P2Z.class, method = "Anf()V", at = At.REPLACE_CALL,
+          callOwner = ohx.class, call = "beI(LqPh;)V", occurrence = 1, id = "midi-in")
+    public static void midiIn(ohx port, qPh message) {
+        try {
+            if (message instanceof Hub shortMessage) {
+                read(shortMessage.beI);
+            }
+        } catch (Throwable ignored) {
+            // never stand in the way of the MIDI
+        }
+        port.beI(message);
+    }
+
+    @Hook(target = aEx.class, method = "beI(IF)V", at = At.REPLACE_CALL,
+          callOwner = usb.class, call = "beI(IIF)V", occurrence = 1, id = "computer-keyboard-on")
+    public static void keyboardOn(usb engine, int port, int pitch, float velocity) throws IOException {
+        try {
+            read(0x90 | pitch << 8 | 100 << 16);
+        } catch (Throwable ignored) {
+            // never stand in the way of the keyboard
+        }
+        engine.beI(port, pitch, velocity);
+    }
+
+    @Hook(target = aEx.class, method = "Gef(IF)V", at = At.REPLACE_CALL,
+          callOwner = usb.class, call = "Gef(IIF)V", occurrence = 1, id = "computer-keyboard-off")
+    public static void keyboardOff(usb engine, int port, int pitch, float velocity) throws IOException {
+        try {
+            read(0x80 | pitch << 8);
+        } catch (Throwable ignored) {
+            // never stand in the way of the keyboard
+        }
+        engine.Gef(port, pitch, velocity);
     }
 
     @Hook(target = com.bitwig.flt.widget.core.timeline.WRA.class, method = "beI(Lbke;LJtD;)LdwF;", at = At.WRAP_RETURN)

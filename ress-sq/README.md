@@ -70,6 +70,9 @@ its track starts it fresh.
 - **Its own look.** Violet steps, an amber playhead and a RESS-SQ header, so it
   is obvious which grid is up.
 
+The footer also shows the **MIDI key you are playing**, after **FOLD**, read from
+Bitwig's own MIDI input — notes from a controller and from the computer keyboard.
+
 ## Install with Patchbay
 
 1. Install Patchbay Mod Loader and patch Bitwig from its window.
