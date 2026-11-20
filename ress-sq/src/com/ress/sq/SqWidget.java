@@ -37,6 +37,8 @@ final class SqWidget extends dwF {
     private static final SZB ACCENT = new SZB(0.66f, 0.42f, 0.96f, 1f);
     private static final SZB PLAYHEAD = new SZB(0.98f, 0.71f, 0.32f, 1f);
     private static final SZB ERASE = new SZB(0.95f, 0.36f, 0.32f, 1f);
+    // Lighter than a cell, so an unmarked row still shows its box.
+    private static final SZB MARK_OFF = new SZB(0.40f, 0.42f, 0.45f, 1f);
     private static final int TOOLS = 3;
     private static final int WHEEL_ROWS = 3;
     private static final long REFRESH_INTERVAL = 150_000_000L;
@@ -584,8 +586,8 @@ final class SqWidget extends dwF {
         }
         pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         rectangle(graphics, markLeft(), y + (height - dot) / 2, dot, dot,
-                state.marked.contains(key) ? ACCENT : CELL);
-        pill(graphics, scopeLeft(), y, height, "R", scoped, text);
+                state.marked.contains(key) ? ACCENT : MARK_OFF);
+        pill(graphics, scopeLeft(), y, height, "o", scoped, text);
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
         if (height >= wGt(11)) {
@@ -773,21 +775,25 @@ final class SqWidget extends dwF {
     private double pickerX() { return wGt(4); }
     private double pickerY() { return top() + wGt(4); }
     private double pickerWidth() { return Math.min(labels() + wGt(90), rtK() - wGt(8)); }
-    private double pickerLine() { return wGt(17); }
     private int pickerCount() { return RENAME_CHOICES.length + 1; }
+
+    /** Rows shrink so the whole list, Clear included, fits the grid. */
+    private double pickerLine() {
+        double available = bottom() - pickerY() - wGt(10);
+        return Math.min(wGt(17), Math.max(wGt(10), available / pickerCount()));
+    }
+
+    private double pickerHeight() { return pickerCount() * pickerLine() + wGt(6); }
 
     private void paintPicker(com.bitwig.graphics.ijY graphics, SZB text) {
         double x = pickerX();
         double y = pickerY();
-        double height = Math.min(pickerCount() * pickerLine() + wGt(6), bottom() - y - wGt(2));
+        double height = pickerHeight();
         rectangle(graphics, x, y, pickerWidth(), height, CELL);
         rectangle(graphics, x, y, pickerWidth(), wGt(1), ACCENT);
         for (int i = 0; i < pickerCount(); i++) {
             double line = y + wGt(3) + i * pickerLine();
-            if (line + pickerLine() > y + height) {
-                break;
-            }
-            graphics.beI(x + wGt(8), line + wGt(12),
+            graphics.beI(x + wGt(8), line + pickerLine() - wGt(5),
                     i == PICKER_CLEAR ? "Clear" : RENAME_CHOICES[i], text);
         }
         graphics.beI(x + wGt(8), y - wGt(6), "Name " + rowName(pickerRow), text.beI(0.7f));
