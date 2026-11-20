@@ -13,15 +13,21 @@ import bitwig.obf.eqw; // modifiers
 import bitwig.obf.eqx; // mouse button
 import bml.pianoroll.Edit;
 import bml.pianoroll.Listening;
+import bml.pianoroll.Note;
+import bml.pianoroll.NoteSelection;
 import bml.pianoroll.PianoRoll;
 import bml.pianoroll.Refused;
 import com.bitwig.base.geom.ijY; // widget size
 import com.bitwig.base.sound.YjF; // native pitch names
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 final class SqWidget extends dwF {
     private static final SZB BACKGROUND = new SZB(0.117f, 0.121f, 0.128f, 1f);
@@ -45,6 +51,19 @@ final class SqWidget extends dwF {
     private int firstRow;
     private int playingColumn = -1;
     private boolean follow = true;
+    /** Rows the grid is showing, in display order: all rows, or only the marked ones when folded. */
+    private List<Integer> shownRows = List.of();
+    private final Set<Integer> markedRows = new HashSet<>();
+    private final Set<Integer> mutedRows = new HashSet<>();
+    private final Set<Integer> soloRows = new HashSet<>();
+    private final Map<Integer, String> rowNames = new HashMap<>();
+    /** Velocities the mute replaced, so unmuting puts them back. */
+    private final Map<Note, Double> savedVelocity = new HashMap<>();
+    private Set<Integer> mutedKeys = Set.of();
+    private boolean fold;
+    private int pickerRow = -1;
+    private NoteSelection selection;
+    private Listening selectionListening;
     private final java.util.Random random = new java.util.Random();
     private CellGesture gesture;
     private dsB frames;
@@ -146,6 +165,11 @@ final class SqWidget extends dwF {
             changes.stop();
             changes = null;
         }
+        if (selectionListening != null) {
+            selectionListening.stop();
+            selectionListening = null;
+            selection = null;
+        }
         nextRefresh = 0;
     }
 
@@ -164,6 +188,7 @@ final class SqWidget extends dwF {
             subscribing = false;
             if (frames == null && view.active.getBoolValue() && TUb()) {
                 changes = PianoRoll.onChange(() -> nextRefresh = 0);
+                selectionListening = PianoRoll.onSelectionChange(selected -> selection = selected);
                 frames = dsB.beI(frame -> {
                     if (!view.active.getBoolValue() || !TUb()) {
                         deactivate();
@@ -200,9 +225,10 @@ final class SqWidget extends dwF {
                 page = 0;
                 firstRow = current != null && current.chromatic() ? 63 : 0;
             }
+            shownRows = computeShown(current);
             if (current != null) {
                 page = Math.min(page, current.range().pages() - 1);
-                firstRow = Math.min(firstRow, maxFirstRow(current));
+                firstRow = Math.min(firstRow, maxFirstRow());
             }
             List<SqGrid.Event<SqNote>> currentNotes = current == null ? List.of() : current.notes(
                     current.range().beat(page, 0), Math.min(current.range().end(), current.range().beat(page, SqGrid.STEPS)));
@@ -211,6 +237,7 @@ final class SqWidget extends dwF {
                 notes = currentNotes;
                 OCx();
             }
+            recomputeMuted();
         } catch (RuntimeException | LinkageError failure) {
             deactivate();
             target = null;
@@ -231,15 +258,44 @@ final class SqWidget extends dwF {
     private double tabStart() { return Math.max(wGt(65), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
     private double tabWidth() { return Math.min(wGt(70), Math.max(1, (rtK() - toolsWidth() - tabStart()) / PARAMETERS.length)); }
     private int visibleRows() { return Math.max(1, (int) Math.ceil((bottom() - top()) / rowHeight())); }
-    private int maxFirstRow(SqClip clip) { return Math.max(0, clip.rows().size() - visibleRows()); }
+    private int maxFirstRow() { return Math.max(0, shownRows.size() - visibleRows()); }
+
+    private List<Integer> computeShown(SqClip clip) {
+        if (clip == null) {
+            return List.of();
+        }
+        List<Integer> shown = new ArrayList<>();
+        for (int i = 0; i < clip.rows().size(); i++) {
+            if (!fold || markedRows.contains(clip.rows().get(i).key())) {
+                shown.add(i);
+            }
+        }
+        return List.copyOf(shown);
+    }
+
+    private int slotAt(double y) {
+        if (y < top() || y >= bottom()) {
+            return -1;
+        }
+        int slot = firstRow + (int) Math.floor((y - top()) / rowHeight());
+        return slot >= 0 && slot < shownRows.size() ? slot : -1;
+    }
+
+    private int keyAt(double y) {
+        int slot = slotAt(y);
+        return slot < 0 || target == null ? -1 : target.rows().get(shownRows.get(slot)).key();
+    }
+
+    private double muteLeft() { return labels() - wGt(30); }
+    private double soloLeft() { return labels() - wGt(15); }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
-        int row = firstRow + (int) Math.floor((y - top()) / rowHeight());
-        if (y < top() || y >= bottom() || column < 0 || column >= SqGrid.STEPS || row >= target.rows().size()) {
+        int slot = slotAt(y);
+        if (column < 0 || column >= SqGrid.STEPS || slot < 0 || target == null) {
             return -1;
         }
-        return row * SqGrid.STEPS + column;
+        return shownRows.get(slot) * SqGrid.STEPS + column;
     }
 
     @Override
@@ -278,6 +334,12 @@ final class SqWidget extends dwF {
             graphics.beI(labels() + column * column() + wGt(3), wGt(41), Integer.toString(column + 1), text.beI(0.6f));
         }
         rectangle(graphics, 0, bottom(), rtK(), wGt(25), STRIP);
+        double foldX = wGt(4);
+        rectangle(graphics, foldX, bottom() + wGt(3), wGt(46), wGt(18), fold ? BEAT : CELL);
+        if (fold) {
+            rectangle(graphics, foldX, bottom() + wGt(20), wGt(46), wGt(1), ACCENT);
+        }
+        graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(fold ? 1f : 0.7f));
         for (Parameter tab : PARAMETERS) {
             double x = tabStart() + tab.ordinal() * tabWidth();
             boolean selected = parameter == tab;
@@ -290,6 +352,9 @@ final class SqWidget extends dwF {
         if (gesture != null && gesture.dragged) {
             graphics.beI(tabStart() + PARAMETERS.length * tabWidth() + wGt(8), bottom() + wGt(16),
                     gesture.display(), text);
+        }
+        if (pickerRow >= 0) {
+            paintPicker(graphics, text);
         }
         // RESS-SQ's own tools: follow the playhead, randomise, clear this page.
         String[] labels = {"FLW", "RND", "CLR"};
@@ -310,9 +375,9 @@ final class SqWidget extends dwF {
         if (target == null) {
             return;
         }
-        int rows = Math.min(target.rows().size(), firstRow + visibleRows());
-        for (int row = firstRow; row < rows; row++) {
-            int key = target.rows().get(row).key();
+        int rows = Math.min(shownRows.size(), firstRow + visibleRows());
+        for (int slot = firstRow; slot < rows; slot++) {
+            int key = target.rows().get(shownRows.get(slot)).key();
             for (int column = 0; column < SqGrid.STEPS; column++) {
                 double start = target.range().beat(page, column);
                 double end = Math.min(start + SqGrid.STEP, target.range().end());
@@ -327,8 +392,9 @@ final class SqWidget extends dwF {
         try {
             Edit edit = PianoRoll.edit("Randomise Step Velocities");
             int[] count = {0};
+            Set<Note> chosen = selectedNotes();
             visitPageCells(cell -> {
-                if (cell.note() != null) {
+                if (cell.note() != null && (chosen.isEmpty() || chosen.contains(cell.note().note().note()))) {
                     // Keep it musical: a jittered band rather than noise across the whole range.
                     double velocity = 0.40 + random.nextDouble() * 0.60;
                     edit.setVelocity(cell.note().note().note(), velocity);
@@ -336,7 +402,9 @@ final class SqWidget extends dwF {
                 }
             });
             if (count[0] == 0) {
-                PianoRoll.notification("RESS-SQ: no steps on this page.");
+                PianoRoll.notification(chosen.isEmpty()
+                        ? "RESS-SQ: no steps on this page."
+                        : "RESS-SQ: none of the selected notes are steps on this page.");
                 return;
             }
             edit.apply();
@@ -388,28 +456,30 @@ final class SqWidget extends dwF {
 
     private void paintGrid(com.bitwig.graphics.ijY graphics, SZB text) {
         SZB color = target.color() == null || target.color().Anf() == 0f ? ACCENT : target.color().beI();
-        int rows = Math.min(target.rows().size() - firstRow, visibleRows());
-        for (int row = 0; row < rows; row++) {
-            SqClip.Row pitch = target.rows().get(firstRow + row);
-            double y = top() + row * rowHeight();
+        int rows = Math.min(shownRows.size() - firstRow, visibleRows());
+        for (int slot = 0; slot < rows; slot++) {
+            int index = shownRows.get(firstRow + slot);
+            SqClip.Row pitch = target.rows().get(index);
+            double y = top() + slot * rowHeight();
             double height = Math.min(rowHeight() - wGt(2), bottom() - y);
             if (height <= 0) {
                 break;
             }
+            boolean muted = isMuted(pitch.key());
             rectangle(graphics, 0, y, labels() - wGt(2), height, STRIP);
-            if (height >= wGt(11)) {
-                String name = pitch.name();
-                int limit = Math.max(4, (int) ((labels() - wGt(15)) / Math.max(1, wGt(7))));
-                graphics.beI(wGt(8), y + height * 0.5 + wGt(4),
-                        name.length() > limit ? name.substring(0, limit - 1) + "…" : name, text);
-            }
+            paintRowLabel(graphics, pitch, y, height, text, muted);
             for (int column = 0; column < SqGrid.STEPS; column++) {
-                paintCell(graphics, pitch, (firstRow + row) * SqGrid.STEPS + column, y, height, color, text);
+                paintCell(graphics, pitch, index * SqGrid.STEPS + column, y, height, color, text, muted);
             }
         }
     }
 
-    private void paintCell(com.bitwig.graphics.ijY graphics, SqClip.Row row, int index, double y, double height, SZB color, SZB text) {
+    private void paintCell(com.bitwig.graphics.ijY graphics, SqClip.Row row, int index, double y,
+            double height, SZB color, SZB text, boolean muted) {
+        if (muted) {
+            color = color.beI(0.30f);
+            text = text.beI(0.55f);
+        }
         int column = index % SqGrid.STEPS;
         double x = labels() + column * column();
         double width = Math.max(0, column() - wGt(2));
@@ -474,6 +544,41 @@ final class SqWidget extends dwF {
         }
     }
 
+    private void paintRowLabel(com.bitwig.graphics.ijY graphics, SqClip.Row pitch, double y,
+            double height, SZB text, boolean muted) {
+        int key = pitch.key();
+        double dot = Math.min(wGt(7), Math.max(wGt(4), height - wGt(4)));
+        rectangle(graphics, wGt(2), y + (height - dot) / 2, dot, dot,
+                markedRows.contains(key) ? ACCENT : CELL);
+        pill(graphics, muteLeft(), y, height, "M", mutedRows.contains(key), text);
+        pill(graphics, soloLeft(), y, height, "S", soloRows.contains(key), text);
+        if (height >= wGt(11)) {
+            String name = rowLabel(pitch);
+            int limit = Math.max(3, (int) ((muteLeft() - wGt(14)) / Math.max(1, wGt(7))));
+            graphics.beI(wGt(12), y + height * 0.5 + wGt(4),
+                    name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
+                    text.beI(muted ? 0.45f : 1f));
+        }
+    }
+
+    private void pill(com.bitwig.graphics.ijY graphics, double x, double y, double height,
+            String label, boolean on, SZB text) {
+        rectangle(graphics, x, y + wGt(1), wGt(13), Math.max(wGt(3), height - wGt(2)), on ? ACCENT : CELL);
+        graphics.beI(x + wGt(4), y + height * 0.5 + wGt(3), label, text.beI(on ? 1f : 0.55f));
+    }
+
+    /** The row's name: the mod's own label when it has one, else Bitwig's pad or pitch name. */
+    private String rowLabel(SqClip.Row pitch) {
+        String custom = rowNames.get(pitch.key());
+        if (custom == null) {
+            return pitch.name();
+        }
+        String name = pitch.name();
+        int cut = name.indexOf("  ");
+        String note = cut > 0 ? name.substring(0, cut) : name;
+        return note + " " + custom;
+    }
+
     private void paintRepeats(com.bitwig.graphics.ijY graphics, double x, double y, double width, double height, int repeats) {
         int segments = Math.min(repeats, (int) (width / Math.max(1, wGt(4))));
         for (int i = 1; i < segments; i++) {
@@ -498,6 +603,43 @@ final class SqWidget extends dwF {
         }
         if (button != eqx.beI) {
             return null;
+        }
+        if (pickerRow >= 0) {
+            double px = pickerX();
+            if (x >= px && x < px + pickerWidth() && y >= pickerY()) {
+                int choice = (int) ((y - pickerY() - wGt(3)) / pickerLine());
+                return control(() -> chooseName(Math.max(0, Math.min(PICKER_CLEAR, choice))));
+            }
+            return control(() -> {
+                pickerRow = -1;
+                OCx();
+            });
+        }
+        if (y >= bottom() && x >= wGt(4) && x < wGt(52)) {
+            return control(() -> {
+                fold = !fold;
+                shownRows = computeShown(target);
+                firstRow = Math.min(firstRow, maxFirstRow());
+                OCx();
+            });
+        }
+        if (x < labels() - wGt(1) && y >= top() && y < bottom()) {
+            int key = keyAt(y);
+            if (key >= 0) {
+                if (x < wGt(11)) {
+                    return control(() -> toggleMark(key));
+                }
+                if (x >= muteLeft() && x < muteLeft() + wGt(14)) {
+                    return control(() -> toggleMute(key));
+                }
+                if (x >= soloLeft() && x < soloLeft() + wGt(14)) {
+                    return control(() -> toggleSolo(key));
+                }
+                return control(() -> {
+                    pickerRow = key;
+                    OCx();
+                });
+            }
         }
         double right = gridRight() - wGt(6);
         if (y < wGt(26) && x >= right - wGt(126) && x < right) {
@@ -556,6 +698,147 @@ final class SqWidget extends dwF {
         };
     }
 
+    private static final String[] RENAME_CHOICES = {
+        "Kick", "Snare", "Clap", "Hat", "Open Hat", "Rim",
+        "Tom", "Ride", "Crash", "Perc", "Bass", "Chord",
+    };
+    private static final int PICKER_CLEAR = RENAME_CHOICES.length;
+
+    private double pickerX() { return wGt(4); }
+    private double pickerY() { return top() + wGt(4); }
+    private double pickerWidth() { return Math.min(labels() + wGt(90), rtK() - wGt(8)); }
+    private double pickerLine() { return wGt(17); }
+    private int pickerCount() { return RENAME_CHOICES.length + 1; }
+
+    private void paintPicker(com.bitwig.graphics.ijY graphics, SZB text) {
+        double x = pickerX();
+        double y = pickerY();
+        double height = Math.min(pickerCount() * pickerLine() + wGt(6), bottom() - y - wGt(2));
+        rectangle(graphics, x, y, pickerWidth(), height, CELL);
+        rectangle(graphics, x, y, pickerWidth(), wGt(1), ACCENT);
+        for (int i = 0; i < pickerCount(); i++) {
+            double line = y + wGt(3) + i * pickerLine();
+            if (line + pickerLine() > y + height) {
+                break;
+            }
+            graphics.beI(x + wGt(8), line + wGt(12),
+                    i == PICKER_CLEAR ? "Clear" : RENAME_CHOICES[i], text);
+        }
+        graphics.beI(x + wGt(8), y - wGt(6), "Name " + rowName(pickerRow), text.beI(0.7f));
+    }
+
+    private void chooseName(int choice) {
+        int key = pickerRow;
+        pickerRow = -1;
+        if (key < 0) {
+            return;
+        }
+        if (choice == PICKER_CLEAR) {
+            rowNames.remove(key);
+        } else {
+            rowNames.put(key, RENAME_CHOICES[choice]);
+        }
+        OCx();
+    }
+
+    private String rowName(int key) {
+        if (target != null) {
+            for (SqClip.Row row : target.rows()) {
+                if (row.key() == key) {
+                    return rowLabel(row);
+                }
+            }
+        }
+        return Integer.toString(key);
+    }
+
+    private boolean isMuted(int key) { return mutedKeys.contains(key); }
+
+    private void recomputeMuted() {
+        if (target == null) {
+            mutedKeys = Set.of();
+            return;
+        }
+        Set<Integer> effective = new LinkedHashSet<>(mutedRows);
+        if (!soloRows.isEmpty()) {
+            for (SqClip.Row row : target.rows()) {
+                if (!soloRows.contains(row.key())) {
+                    effective.add(row.key());
+                }
+            }
+        }
+        mutedKeys = Set.copyOf(effective);
+    }
+
+    private void toggleMark(int key) {
+        if (!markedRows.remove(key)) {
+            markedRows.add(key);
+        }
+        shownRows = computeShown(target);
+        firstRow = Math.min(firstRow, maxFirstRow());
+        OCx();
+    }
+
+    private void toggleMute(int key) {
+        if (!mutedRows.remove(key)) {
+            mutedRows.add(key);
+        }
+        recomputeMuted();
+        applyMute("Mute " + rowName(key));
+        OCx();
+    }
+
+    private void toggleSolo(int key) {
+        if (!soloRows.remove(key)) {
+            soloRows.add(key);
+        }
+        recomputeMuted();
+        applyMute("Solo " + rowName(key));
+        OCx();
+    }
+
+    /**
+     * Muting silences a row by taking its notes to velocity 0 and keeps the velocity
+     * each note had, so unmuting puts it back. One undo step for the whole row, and
+     * nothing is removed from the clip.
+     */
+    private void applyMute(String label) {
+        if (target == null) {
+            return;
+        }
+        try {
+            Edit edit = PianoRoll.edit(label);
+            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
+                Note note = event.note().note();
+                Double saved = savedVelocity.get(note);
+                if (mutedKeys.contains(event.key())) {
+                    if (saved == null) {
+                        savedVelocity.put(note, event.velocity());
+                        edit.setVelocity(note, 0);
+                    }
+                } else if (saved != null) {
+                    savedVelocity.remove(note);
+                    edit.setVelocity(note, saved);
+                }
+            }
+            edit.apply();
+        } catch (Refused refused) {
+            PianoRoll.notification(refused.getMessage());
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not mute the row", failure);
+        }
+    }
+
+    /** The notes selected in the editor, empty when the selection holds none. */
+    private Set<Note> selectedNotes() {
+        try {
+            NoteSelection current = selection;
+            return current == null ? Set.of() : Set.copyOf(current.notes());
+        } catch (RuntimeException refused) {
+            return Set.of();
+        }
+    }
+
     private void changePage(int delta) {
         if (target != null) {
             page = Math.max(0, Math.min(target.range().pages() - 1, page + delta));
@@ -586,7 +869,7 @@ final class SqWidget extends dwF {
 
     private void scrollRows(int delta) {
         if (target != null) {
-            firstRow = Math.max(0, Math.min(maxFirstRow(target), firstRow + delta));
+            firstRow = Math.max(0, Math.min(maxFirstRow(), firstRow + delta));
             OCx();
         }
     }

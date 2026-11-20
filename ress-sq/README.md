@@ -26,13 +26,31 @@ or switch to Piano or Drums.
   notes starting in the same cell, and those cells are protected from clicks that
   would delete ambiguously.
 
+## Rows: mark, fold, mute, solo, name
+
+The label column holds one control row per pitch:
+
+- **Mark** — the small square on the left of the name. **FOLD**, in the footer
+  before **Velocity**, hides every unmarked row.
+- **M** — mutes that pitch: its notes go to velocity 0 in one undo step and keep
+  the velocity they had, so unmuting restores it. Nothing is deleted.
+- **S** — solos that pitch: while any row is soloed, every other row is muted the
+  same way.
+- **Rename** — click the row's name to pick one (Kick, Snare, Clap, …). The row
+  then reads `B2 Kick`, with Bitwig's own pitch name kept in front. **Clear** puts
+  Bitwig's name back.
+
+Muted rows draw dimmed and their steps drop out of the **RND** and **CLR** tools.
+
 ## What RESS-SQ adds
 
 - **FLW — follow the playhead.** With it on, the grid turns to the page the
   transport is playing, so a long clip follows along. On by default; click to
   turn it off when you want to browse pages while it plays.
 - **RND — randomise.** Replaces the velocity of every step on the current page
-  with a random value between 40% and 100%, in one undo step.
+  with a random value between 40% and 100%, in one undo step. **If notes are
+  selected in the editor, only those notes change**; when none are selected it
+  covers the whole page.
 - **CLR — clear.** Removes every step the grid shows on the current page in one
   undo step. Cells it draws as protected are left alone.
 - **Its own look.** Violet steps, an amber playhead and a RESS-SQ header, so it
@@ -41,7 +59,7 @@ or switch to Piano or Drums.
 ## Install with Patchbay
 
 1. Install Patchbay Mod Loader and patch Bitwig from its window.
-2. **Mods → Add Mod…** and pick `ress-sq-0.1.2.zip` (do not unpack it).
+2. **Mods → Add Mod…** and pick `ress-sq-0.1.3.zip` (do not unpack it).
 3. Tick **Framework: Piano Roll** (it ships with Patchbay) and **RESS-SQ**, then
    click **Load**.
 
@@ -69,7 +87,7 @@ python3 tools/build_releases.py \
 
 It compiles the helper against Bitwig's own jar, validates every hook with the mod
 kit, generates the finished `mod.json` from the hooks it reports, and writes
-`dist/ress-sq-0.1.2.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
+`dist/ress-sq-0.1.3.zip`. See [../docs/releasing.md](../docs/releasing.md) for the
 offline check and publishing.
 
 ## Layout
