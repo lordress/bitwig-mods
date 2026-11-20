@@ -1,6 +1,8 @@
 package com.ress.sq;
 
+import bitwig.obf.PiG; // native note selection
 import bitwig.obf.SZB; // native color
+import bitwig.obf.c1N; // native MIDI note
 import bitwig.obf.bke; // Detail Editor controller
 import bitwig.obf.dLf; // mouse press
 import bitwig.obf.dLg; // mouse release
@@ -286,8 +288,9 @@ final class SqWidget extends dwF {
         return slot < 0 || target == null ? -1 : target.rows().get(shownRows.get(slot)).key();
     }
 
-    private double muteLeft() { return labels() - wGt(30); }
-    private double soloLeft() { return labels() - wGt(15); }
+    private double muteLeft() { return labels() - wGt(50); }
+    private double soloLeft() { return labels() - wGt(35); }
+    private double selectLeft() { return labels() - wGt(20); }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
@@ -320,6 +323,9 @@ final class SqWidget extends dwF {
                 rectangle(graphics, labels() + playingColumn * column(), wGt(44), column() - wGt(2), wGt(2), PLAYHEAD);
             }
             paintGrid(graphics, text);
+            if (pickerRow >= 0) {
+                paintPicker(graphics, text);
+            }
         } finally {
             graphics.jTs();
         }
@@ -352,9 +358,6 @@ final class SqWidget extends dwF {
         if (gesture != null && gesture.dragged) {
             graphics.beI(tabStart() + PARAMETERS.length * tabWidth() + wGt(8), bottom() + wGt(16),
                     gesture.display(), text);
-        }
-        if (pickerRow >= 0) {
-            paintPicker(graphics, text);
         }
         // RESS-SQ's own tools: follow the playhead, randomise, clear this page.
         String[] labels = {"FLW", "RND", "CLR"};
@@ -548,14 +551,15 @@ final class SqWidget extends dwF {
             double height, SZB text, boolean muted) {
         int key = pitch.key();
         double dot = Math.min(wGt(7), Math.max(wGt(4), height - wGt(4)));
-        rectangle(graphics, wGt(2), y + (height - dot) / 2, dot, dot,
+        rectangle(graphics, wGt(4), y + (height - dot) / 2, dot, dot,
                 markedRows.contains(key) ? ACCENT : CELL);
         pill(graphics, muteLeft(), y, height, "M", mutedRows.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", soloRows.contains(key), text);
+        pill(graphics, selectLeft(), y, height, "→", false, text);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
-            int limit = Math.max(3, (int) ((muteLeft() - wGt(14)) / Math.max(1, wGt(7))));
-            graphics.beI(wGt(12), y + height * 0.5 + wGt(4),
+            int limit = Math.max(3, (int) ((muteLeft() - wGt(18)) / Math.max(1, wGt(7))));
+            graphics.beI(wGt(17), y + height * 0.5 + wGt(4),
                     name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
                     text.beI(muted ? 0.45f : 1f));
         }
@@ -626,14 +630,17 @@ final class SqWidget extends dwF {
         if (x < labels() - wGt(1) && y >= top() && y < bottom()) {
             int key = keyAt(y);
             if (key >= 0) {
-                if (x < wGt(11)) {
+                if (x < wGt(13)) {
                     return control(() -> toggleMark(key));
                 }
-                if (x >= muteLeft() && x < muteLeft() + wGt(14)) {
+                if (x >= muteLeft() && x < muteLeft() + wGt(13)) {
                     return control(() -> toggleMute(key));
                 }
-                if (x >= soloLeft() && x < soloLeft() + wGt(14)) {
+                if (x >= soloLeft() && x < soloLeft() + wGt(13)) {
                     return control(() -> toggleSolo(key));
+                }
+                if (x >= selectLeft() && x < selectLeft() + wGt(13)) {
+                    return control(() -> selectRow(key));
                 }
                 return control(() -> {
                     pickerRow = key;
@@ -826,6 +833,40 @@ final class SqWidget extends dwF {
             PianoRoll.notification(refused.getMessage());
         } catch (RuntimeException | LinkageError failure) {
             RessSq.MOD.log("Could not mute the row", failure);
+        }
+    }
+
+    /**
+     * Puts every note of one pitch in the clip into the editor's selection, so RND
+     * and Bitwig's own tools work on that row. The selection object comes from a
+     * note of the row; Hnt(Collection) replaces it.
+     */
+    private void selectRow(int key) {
+        if (target == null) {
+            return;
+        }
+        try {
+            List<c1N> chosen = new ArrayList<>();
+            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
+                if (event.key() == key) {
+                    Object bitwigNote = event.note().note().bitwigNote();
+                    if (bitwigNote instanceof c1N note) {
+                        chosen.add(note);
+                    }
+                }
+            }
+            if (chosen.isEmpty()) {
+                PianoRoll.notification("RESS-SQ: no notes on this row.");
+                return;
+            }
+            PiG selection = chosen.get(0).IDq();
+            if (selection == null) {
+                return;
+            }
+            selection.sCA(chosen);
+            OCx();
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not select the row\'s notes", failure);
         }
     }
 
