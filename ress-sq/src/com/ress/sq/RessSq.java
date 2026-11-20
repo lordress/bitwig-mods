@@ -3,7 +3,6 @@ package com.ress.sq;
 import bitwig.obf.NdS; // Drum/Hybrid mode
 import bitwig.obf.cjx; // fixed widget size
 import bitwig.obf.Hub; // a short MIDI message, status and two data bytes packed
-import bitwig.obf.P2Z; // the thread that reads incoming MIDI from the audio engine
 import bitwig.obf.aEx; // the computer keyboard's note input
 import bitwig.obf.ohx; // the receivers of one MIDI input port
 import bitwig.obf.qPh; // a MIDI message
@@ -25,7 +24,6 @@ import bml.api.Return;
 import bml.api.This;
 import com.bitwig.base.geom.mLC;
 import com.bitwig.flt.widget.core.timeline.WRA; // Detail Editor mode strip
-import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.ArrayList;
@@ -91,9 +89,13 @@ public final class RessSq {
         return key < 0 ? "" : com.bitwig.base.sound.YjF.beI(key, true);
     }
 
-    @Hook(target = P2Z.class, method = "Anf()V", at = At.REPLACE_CALL,
-          callOwner = ohx.class, call = "beI(LqPh;)V", occurrence = 1, id = "midi-in")
-    public static void midiIn(ohx port, qPh message) {
+    /**
+     * Every short message a MIDI input port receives. capture-midi replaces the call
+     * inside the reader thread; hooking the receiver instead means the two coexist
+     * and neither depends on the other.
+     */
+    @Hook(target = ohx.class, method = "beI(LqPh;)V", at = At.ENTRY, id = "midi-in")
+    public static void midiIn(@This ohx port, @Arg(0) qPh message) {
         try {
             if (message instanceof Hub shortMessage) {
                 read(shortMessage.beI);
@@ -101,29 +103,24 @@ public final class RessSq {
         } catch (Throwable ignored) {
             // never stand in the way of the MIDI
         }
-        port.beI(message);
     }
 
-    @Hook(target = aEx.class, method = "beI(IF)V", at = At.REPLACE_CALL,
-          callOwner = usb.class, call = "beI(IIF)V", occurrence = 1, id = "computer-keyboard-on")
-    public static void keyboardOn(usb engine, int port, int pitch, float velocity) throws IOException {
+    @Hook(target = usb.class, method = "beI(IIF)V", at = At.ENTRY, id = "keyboard-on")
+    public static void keyboardOn(@Arg(0) int port, @Arg(1) int pitch, @Arg(2) float velocity) {
         try {
             read(0x90 | pitch << 8 | 100 << 16);
         } catch (Throwable ignored) {
             // never stand in the way of the keyboard
         }
-        engine.beI(port, pitch, velocity);
     }
 
-    @Hook(target = aEx.class, method = "Gef(IF)V", at = At.REPLACE_CALL,
-          callOwner = usb.class, call = "Gef(IIF)V", occurrence = 1, id = "computer-keyboard-off")
-    public static void keyboardOff(usb engine, int port, int pitch, float velocity) throws IOException {
+    @Hook(target = usb.class, method = "Gef(IIF)V", at = At.ENTRY, id = "keyboard-off")
+    public static void keyboardOff(@Arg(0) int port, @Arg(1) int pitch, @Arg(2) float velocity) {
         try {
             read(0x80 | pitch << 8);
         } catch (Throwable ignored) {
             // never stand in the way of the keyboard
         }
-        engine.Gef(port, pitch, velocity);
     }
 
     @Hook(target = com.bitwig.flt.widget.core.timeline.WRA.class, method = "beI(Lbke;LJtD;)LdwF;", at = At.WRAP_RETURN)
