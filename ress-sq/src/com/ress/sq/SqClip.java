@@ -18,7 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
 
-record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<Row> rows, SZB color) {
+record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<Row> rows, SZB color,
+        String stateKey) {
     private static final List<Row> CHROMATIC = chromaticRows();
 
     record Row(int key, String name) {}
@@ -39,8 +40,10 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
         }
         YCD drawing = lane.XnJ();
         double velocity = drawing == null ? 0.0 : drawing.Ktd();
+        Wg track = track(lane, nativeClip);
         return new SqClip(clip, new SqGrid.Range(start, end), lane.mb_(),
-                velocity > 0 ? velocity : 100.0 / 127.0, rows(lane, nativeClip), nativeClip.IvP());
+                velocity > 0 ? velocity : 100.0 / 127.0, rows(track, nativeClip), nativeClip.IvP(),
+                stateKey(track, start, end));
     }
 
     private static bpF clipLane(bke editor) {
@@ -63,11 +66,39 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
         return onlyClip;
     }
 
-    private static List<Row> rows(bpF lane, DrA clip) {
+    private static Wg track(bpF lane, DrA clip) {
         Ynv layer = lane.tWW();
         Ynv trackLayer = layer == null ? null : layer.neH();
-        Wg track = trackLayer instanceof AWo nativeTrack ? nativeTrack.gj_()
+        return trackLayer instanceof AWo nativeTrack ? nativeTrack.gj_()
                 : clip.sBA() instanceof Wg clipTrack ? clipTrack : null;
+    }
+
+    /**
+     * A name for this clip that survives a reload: Bitwig exposes no clip id, so it
+     * is the track's name and index plus the clip's start and end, in 96ths of a beat.
+     */
+    private static String stateKey(Wg track, double start, double end) {
+        String name = "?";
+        int index = -1;
+        if (track != null) {
+            try {
+                String value = track.aG_();
+                if (value != null && !value.isBlank()) {
+                    name = value;
+                }
+            } catch (RuntimeException ignored) {
+                // keep the fallback name
+            }
+            try {
+                index = track.YfP();
+            } catch (RuntimeException ignored) {
+                index = -1;
+            }
+        }
+        return name + "#" + index + "@" + Math.round(start * 96) + "-" + Math.round(end * 96);
+    }
+
+    private static List<Row> rows(Wg track, DrA clip) {
         if (track == null || !(track.yAy() instanceof PiT pads)) {
             return CHROMATIC;
         }

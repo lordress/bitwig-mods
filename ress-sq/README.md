@@ -38,7 +38,8 @@ The label column holds one control row per pitch:
   same way.
 - **→** — selects every note of that pitch in the clip, so RND and Bitwig's own
   tools work on the row.
-- **Rename** — click the row's pitch name (`B2`, not the whole column) to pick one (Kick, Snare, Clap, …). The row
+- **N** — rename: picks from a list (Kick, Snare, Clap, …); **Clear** puts Bitwig's
+  name back (Kick, Snare, Clap, …). The row
   then reads `B2 Kick`, with Bitwig's own pitch name kept in front. **Clear** puts
   Bitwig's name back.
 
@@ -46,8 +47,13 @@ Muted rows draw dimmed and their steps drop out of the **RND** and **CLR** tools
 The **→** pill tints softly while that row's notes are selected.
 
 Marks, names, mutes and solos belong to the clip: switch to another clip and come
-back and the row state is as you left it. Mutes are stored with the velocities
-they replaced, so unmuting still restores them.
+back and the row state is as you left it, and it **survives quitting Bitwig** —
+the state is written to the mod's settings. Mutes are stored with the velocities
+they replaced, so unmuting still restores them even after a restart.
+
+The state is filed under the track's name and index plus the clip's start and end,
+because Bitwig gives a mod no clip id. Moving a clip in the arrangement or renaming
+its track starts it fresh.
 
 ## What RESS-SQ adds
 

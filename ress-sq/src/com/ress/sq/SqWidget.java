@@ -56,7 +56,8 @@ final class SqWidget extends dwF {
     /** Rows the grid is showing, in display order: all rows, or only the marked ones when folded. */
     private List<Integer> shownRows = List.of();
     /** Row state per clip, so switching clips and coming back finds it again. */
-    private static final Map<Object, RowState> STATES = new java.util.WeakHashMap<>();
+    private static final Map<String, RowState> STATES = new HashMap<>();
+    private String stateKey;
     private RowState state = new RowState();
     private Set<Integer> selectedKeys = Set.of();
 
@@ -69,7 +70,7 @@ final class SqWidget extends dwF {
         final Set<Integer> solo = new HashSet<>();
         final Map<Integer, String> names = new HashMap<>();
         /** Velocities the mute replaced, so unmuting puts them back. */
-        final Map<Note, Double> savedVelocity = new HashMap<>();
+        final Map<String, Double> savedVelocity = new HashMap<>();
     }
     private boolean fold;
     private int pickerRow = -1;
@@ -235,9 +236,9 @@ final class SqWidget extends dwF {
                 OCx();
             }
             if (clipChanged) {
-                Object clipKey = current == null ? null : current.clip().bitwigClip();
-                state = clipKey == null ? new RowState()
-                        : STATES.computeIfAbsent(clipKey, ignore -> new RowState());
+                stateKey = current == null ? null : current.stateKey();
+                state = stateKey == null ? new RowState()
+                        : STATES.computeIfAbsent(stateKey, SqWidget::loadState);
                 playingColumn = -1;
                 page = 0;
                 firstRow = current != null && current.chromatic() ? 63 : 0;
@@ -307,12 +308,11 @@ final class SqWidget extends dwF {
     private static final int PILL = 17;
     private static final int PILL_GAP = 4;
     private double pillsRight() { return labels() - wGt(7); }
-    private double selectLeft() { return pillsRight() - wGt(PILL); }
+    private double renameLeft() { return pillsRight() - wGt(PILL); }
+    private double selectLeft() { return renameLeft() - wGt(PILL + PILL_GAP); }
     private double soloLeft() { return selectLeft() - wGt(PILL + PILL_GAP); }
     private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
-    /** Only the pitch token opens the picker, not the whole label column. */
     private double nameLeft() { return wGt(17); }
-    private double nameRight() { return wGt(52); }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
@@ -579,6 +579,7 @@ final class SqWidget extends dwF {
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
         pill(graphics, selectLeft(), y, height, "→", false, text, selected);
+        pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
             int limit = Math.max(3, (int) ((muteLeft() - wGt(20)) / Math.max(1, wGt(7))));
@@ -674,7 +675,7 @@ final class SqWidget extends dwF {
                 if (x >= selectLeft() && x < selectLeft() + wGt(PILL)) {
                     return control(() -> selectRow(key));
                 }
-                if (x >= nameLeft() && x < nameRight()) {
+                if (x >= renameLeft() && x < renameLeft() + wGt(PILL)) {
                     return control(() -> {
                         pickerRow = key;
                         OCx();
@@ -780,6 +781,7 @@ final class SqWidget extends dwF {
         } else {
             state.names.put(key, RENAME_CHOICES[choice]);
         }
+        save();
         OCx();
     }
 
@@ -833,6 +835,7 @@ final class SqWidget extends dwF {
         }
         shownRows = computeShown(target);
         firstRow = Math.min(firstRow, maxFirstRow());
+        save();
         OCx();
     }
 
@@ -842,6 +845,7 @@ final class SqWidget extends dwF {
         }
         recomputeMuted();
         applyMute("Mute " + rowName(key));
+        save();
         OCx();
     }
 
@@ -851,6 +855,7 @@ final class SqWidget extends dwF {
         }
         recomputeMuted();
         applyMute("Solo " + rowName(key));
+        save();
         OCx();
     }
 
@@ -867,14 +872,15 @@ final class SqWidget extends dwF {
             Edit edit = PianoRoll.edit(label);
             for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
                 Note note = event.note().note();
-                Double saved = state.savedVelocity.get(note);
+                String id = event.key() + "@" + Math.round(event.start() * 96);
+                Double saved = state.savedVelocity.get(id);
                 if (mutedKeys.contains(event.key())) {
                     if (saved == null) {
-                        state.savedVelocity.put(note, event.velocity());
+                        state.savedVelocity.put(id, event.velocity());
                         edit.setVelocity(note, 0);
                     }
                 } else if (saved != null) {
-                    state.savedVelocity.remove(note);
+                    state.savedVelocity.remove(id);
                     edit.setVelocity(note, saved);
                 }
             }
@@ -921,6 +927,125 @@ final class SqWidget extends dwF {
         } catch (RuntimeException | LinkageError failure) {
             RessSq.MOD.log("Could not select the row\'s notes", failure);
         }
+    }
+
+    // ---- row state that survives a restart -------------------------------------
+
+    private static String settingsPrefix(String stateKey) {
+        String safe = stateKey.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return "clip." + safe + "." + Integer.toHexString(stateKey.hashCode());
+    }
+
+    private static RowState loadState(String stateKey) {
+        RowState loaded = new RowState();
+        try {
+            bml.api.Settings settings = RessSq.MOD.settings();
+            String prefix = settingsPrefix(stateKey);
+            loaded.marked.addAll(parseInts(settings.get(prefix + "marked", "")));
+            loaded.muted.addAll(parseInts(settings.get(prefix + "muted", "")));
+            loaded.solo.addAll(parseInts(settings.get(prefix + "solo", "")));
+            loaded.names.putAll(parseNames(settings.get(prefix + "names", "")));
+            loaded.savedVelocity.putAll(parseValues(settings.get(prefix + "velocity", "")));
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not load the row state", failure);
+        }
+        return loaded;
+    }
+
+    private void save() {
+        if (stateKey == null) {
+            return;
+        }
+        try {
+            bml.api.Settings settings = RessSq.MOD.settings();
+            String prefix = settingsPrefix(stateKey);
+            settings.put(prefix + "marked", joinInts(state.marked));
+            settings.put(prefix + "muted", joinInts(state.muted));
+            settings.put(prefix + "solo", joinInts(state.solo));
+            settings.put(prefix + "names", joinNames(state.names));
+            settings.put(prefix + "velocity", joinValues(state.savedVelocity));
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not save the row state", failure);
+        }
+    }
+
+    private static String joinInts(Set<Integer> keys) {
+        StringBuilder out = new StringBuilder();
+        for (int key : keys) {
+            if (out.length() > 0) {
+                out.append(',');
+            }
+            out.append(key);
+        }
+        return out.toString();
+    }
+
+    private static Set<Integer> parseInts(String text) {
+        Set<Integer> keys = new HashSet<>();
+        for (String part : text.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                try {
+                    keys.add(Integer.parseInt(trimmed));
+                } catch (NumberFormatException ignored) {
+                    // skip a damaged entry
+                }
+            }
+        }
+        return keys;
+    }
+
+    private static String joinNames(Map<Integer, String> names) {
+        StringBuilder out = new StringBuilder();
+        names.forEach((key, value) -> {
+            if (out.length() > 0) {
+                out.append(';');
+            }
+            out.append(key).append('=').append(value);
+        });
+        return out.toString();
+    }
+
+    private static Map<Integer, String> parseNames(String text) {
+        Map<Integer, String> names = new HashMap<>();
+        for (String part : text.split(";")) {
+            int split = part.indexOf('=');
+            if (split > 0) {
+                try {
+                    names.put(Integer.parseInt(part.substring(0, split).trim()),
+                            part.substring(split + 1).trim());
+                } catch (NumberFormatException ignored) {
+                    // skip a damaged entry
+                }
+            }
+        }
+        return names;
+    }
+
+    private static String joinValues(Map<String, Double> values) {
+        StringBuilder out = new StringBuilder();
+        values.forEach((key, value) -> {
+            if (out.length() > 0) {
+                out.append(';');
+            }
+            out.append(key).append('=').append(value);
+        });
+        return out.toString();
+    }
+
+    private static Map<String, Double> parseValues(String text) {
+        Map<String, Double> values = new HashMap<>();
+        for (String part : text.split(";")) {
+            int split = part.indexOf('=');
+            if (split > 0) {
+                try {
+                    values.put(part.substring(0, split).trim(), Double.parseDouble(part.substring(split + 1).trim()));
+                } catch (NumberFormatException ignored) {
+                    // skip a damaged entry
+                }
+            }
+        }
+        return values;
     }
 
     /** The notes selected in the editor, empty when the selection holds none. */
