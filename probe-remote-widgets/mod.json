@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "mod": {
+    "id": "probe-remote-widgets",
+    "name": "Remote Controls: Buttons and Selectors",
+    "area": "Development",
+    "version": "0.1.0-dev.1",
+    "author": "Ressa",
+    "description": "Draws a two-step parameter as Bitwig's toggle button in Remote Controls cells and in the parameter list",
+    "documentation": "readme"
+  },
+  "built_against": {
+    "bitwig_version": "6.1.7",
+    "platform": "macos",
+    "architecture": "universal"
+  },
+  "helper": {
+    "jar": "helper.jar",
+    "class": "com.ress.probe.RemoteWidgetProbe"
+  }
+}

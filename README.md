@@ -44,6 +44,7 @@ Each row has its own controls in the label column:
 | Control | What it does |
 | --- | --- |
 | **N** | Rename the row: Kick, Snare, Clap, Hat, Open Hat, Rim, Tom, Ride, Crash, Perc, Bass, Chord, or **Clear** to go back to Bitwig's own pad name. The row then reads `B2 Kick`, keeping the pitch in front. |
+| **G** | Fills the row's empty cells on this page with random notes — about half of the sixteen — in one Undo step. |
 | **mark** | Marks the row. **FOLD**, before **Velocity**, hides every unmarked row — useful to keep only the pads you are working on. |
 | **o** | Marks the row for **RND** and **CLR**. With no row marked they work on every row shown. |
 | **M** | Mutes the pitch. Its notes go to velocity 0 in one Undo step and keep the velocity they had, so unmuting restores it. Nothing is deleted. |
@@ -64,7 +65,7 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Install
 
-1. Download [`ress-sq-0.3.2.zip`](https://github.com/lordress/bitwig-mods/releases).
+1. Download [`ress-sq-0.4.0.zip`](https://github.com/lordress/bitwig-mods/releases).
 2. In Patchbay: **Mods → Add Mod…** and pick the ZIP. Do not unpack it.
 3. Tick **Framework: Piano Roll** and **RESS-SQ**, then click **Load**.
 

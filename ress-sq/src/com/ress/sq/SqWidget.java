@@ -261,7 +261,7 @@ final class SqWidget extends dwF {
         }
     }
 
-    private double labels() { return Math.min(wGt(200), rtK() * 0.38); }
+    private double labels() { return Math.min(wGt(240), rtK() * 0.44); }
     private double column() { return Math.max(1, (rtK() - labels()) / SqGrid.STEPS); }
     private double gridRight() { return labels() + SqGrid.STEPS * column(); }
     private double rowHeight() { return Math.max(wGt(13), Math.min(wGt(26), column() * 0.50)); }
@@ -307,6 +307,7 @@ final class SqWidget extends dwF {
     private double soloLeft() { return pillsRight() - wGt(PILL); }
     private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
     private double scopeLeft() { return muteLeft() - wGt(PILL + PILL_GAP); }
+    private double generateLeft() { return scopeLeft() - wGt(PILL + PILL_GAP); }
     private double renameLeft() { return wGt(4); }
     private double markLeft() { return wGt(4 + PILL + 4); }
     private double nameLeft() { return wGt(4 + PILL + 4 + 13); }
@@ -446,6 +447,8 @@ final class SqWidget extends dwF {
                 return;
             }
             edit.apply();
+            refresh();
+            OCx();
         } catch (Refused refused) {
             PianoRoll.notification(refused.getMessage());
         } catch (RuntimeException | LinkageError failure) {
@@ -470,6 +473,8 @@ final class SqWidget extends dwF {
                 return;
             }
             edit.apply();
+            refresh();
+            OCx();
         } catch (Refused refused) {
             PianoRoll.notification(refused.getMessage());
         } catch (RuntimeException | LinkageError failure) {
@@ -598,12 +603,13 @@ final class SqWidget extends dwF {
         pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         rectangle(graphics, markLeft(), y + (height - dot) / 2, dot, dot,
                 state.marked.contains(key) ? ACCENT : MARK_OFF);
+        pill(graphics, generateLeft(), y, height, "G", false, text);
         pill(graphics, scopeLeft(), y, height, "o", scoped, text);
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
-            int limit = Math.max(3, (int) ((muteLeft() - wGt(20)) / Math.max(1, wGt(7))));
+            int limit = Math.max(3, (int) ((generateLeft() - wGt(18)) / Math.max(1, wGt(7))));
             graphics.beI(nameLeft(), y + height * 0.5 + wGt(4),
                     name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
                     text.beI(muted ? 0.45f : 1f));
@@ -707,6 +713,9 @@ final class SqWidget extends dwF {
                 }
                 if (x >= markLeft() - wGt(2) && x < markLeft() + wGt(11)) {
                     return control(() -> toggleMark(key));
+                }
+                if (x >= generateLeft() && x < generateLeft() + wGt(PILL)) {
+                    return control(() -> generateRow(key));
                 }
                 if (x >= scopeLeft() && x < scopeLeft() + wGt(PILL)) {
                     return control(() -> toggleScope(key));
@@ -983,6 +992,46 @@ final class SqWidget extends dwF {
         firstRow = Math.min(firstRow, maxFirstRow());
         save();
         OCx();
+    }
+
+    /**
+     * Fills empty cells of one row on this page with random notes, about half of the
+     * sixteen, in one Undo step. Cells that already hold something are left alone.
+     */
+    private void generateRow(int key) {
+        if (target == null) {
+            return;
+        }
+        try {
+            Edit edit = PianoRoll.edit("Generate Row");
+            int[] count = {0};
+            for (int column = 0; column < SqGrid.STEPS; column++) {
+                double start = target.range().beat(page, column);
+                double end = Math.min(start + SqGrid.STEP, target.range().end());
+                if (end <= start) {
+                    continue;
+                }
+                if (!SqGrid.cell(notes, key, target.channel(), start, end).canAdd()) {
+                    continue;
+                }
+                if (random.nextDouble() >= 0.5) {
+                    continue;
+                }
+                edit.add(target.clip(), target.channel(), key, start, end - start, target.velocity(), null);
+                count[0]++;
+            }
+            if (count[0] == 0) {
+                PianoRoll.notification("RESS-SQ: no empty cells left on this row.");
+                return;
+            }
+            edit.apply();
+            refresh();
+            OCx();
+        } catch (Refused refused) {
+            PianoRoll.notification(refused.getMessage());
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not generate the row", failure);
+        }
     }
 
     /** Marks this row for RND and CLR; with no row marked they work on every row shown. */

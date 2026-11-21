@@ -27,6 +27,7 @@ gesture is one Undo step.
 | Control | What it does |
 | --- | --- |
 | **N** | Rename: Kick, Snare, Clap, Hat, Open Hat, Rim, Tom, Ride, Crash, Perc, Bass, Chord, or **Clear**. The row reads `B2 Kick`, keeping the pitch in front. |
+| **G** | Fills the row's empty cells on this page with random notes, about half of the sixteen, in one Undo step. |
 | **mark** | Marks the row; **FOLD** hides every unmarked row. |
 | **o** | Marks the row for **RND** and **CLR**; with none marked they cover every row shown. |
 | **M** | Mutes the pitch by taking its notes to velocity 0 in one Undo step, remembering what they had so unmuting restores it. |
@@ -46,7 +47,7 @@ quitting Bitwig.
 
 ## Install
 
-Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.3.2.zip` (do not unpack it) →
+Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.4.0.zip` (do not unpack it) →
 tick **Framework: Piano Roll** and **RESS-SQ** → **Load**.
 
 Needs `piano-roll-framework` 0.2.0-dev.1 or newer. Built against Bitwig 6.1.7 on
