@@ -3,7 +3,7 @@
   "mod": {
     "id": "ress-sq",
     "name": "Piano Roll: RESS-SQ",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "author": "Ressa",
     "description": "A sixteenth-note step sequencer for the Detail Editor: per-row mute, solo, fold, rename, a random-fill button and RND/CLR scope, follow-playhead, page scrolling, a MIDI key readout, and per-step velocity, offset, length, repeat, pitch and chance.",
     "documentation": "readme"

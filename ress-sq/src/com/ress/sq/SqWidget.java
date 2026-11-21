@@ -995,38 +995,65 @@ final class SqWidget extends dwF {
     }
 
     /**
-     * Fills empty cells of one row on this page with random notes, about half of the
-     * sixteen, in one Undo step. Cells that already hold something are left alone.
+     * Clears this row on the current page, then fills it with a fresh random pattern:
+     * a random number of steps from one to sixteen, in random columns. Cells held by a
+     * note starting on an earlier page are left alone so the pattern never cuts one.
      */
     private void generateRow(int key) {
         if (target == null) {
             return;
         }
         try {
+            double pageStart = target.range().beat(page, 0);
+            double pageEnd = Math.min(target.range().end(), target.range().beat(page, SqGrid.STEPS));
+            if (pageEnd <= pageStart) {
+                return;
+            }
             Edit edit = PianoRoll.edit("Generate Row");
-            int[] count = {0};
+
+            int removed = 0;
+            for (SqGrid.Event<SqNote> event : target.notes(pageStart, pageEnd)) {
+                if (event.key() == key && event.start() >= pageStart - 1e-9 && event.start() < pageEnd - 1e-9) {
+                    edit.remove(event.note().note());
+                    removed++;
+                }
+            }
+
+            boolean[] held = new boolean[SqGrid.STEPS];
             for (int column = 0; column < SqGrid.STEPS; column++) {
+                double start = target.range().beat(page, column);
+                double end = Math.min(start + SqGrid.STEP, target.range().end());
+                held[column] = end > start
+                        && SqGrid.cell(notes, key, target.channel(), start, end).continuation();
+            }
+
+            java.util.List<Integer> columns = new ArrayList<>();
+            for (int column = 0; column < SqGrid.STEPS; column++) {
+                if (!held[column]) {
+                    columns.add(column);
+                }
+            }
+            if (columns.isEmpty()) {
+                PianoRoll.notification("RESS-SQ: nothing to generate on this row.");
+                return;
+            }
+            java.util.Collections.shuffle(columns, random);
+            int wanted = 1 + random.nextInt(columns.size());
+            int added = 0;
+            for (int i = 0; i < wanted; i++) {
+                int column = columns.get(i);
                 double start = target.range().beat(page, column);
                 double end = Math.min(start + SqGrid.STEP, target.range().end());
                 if (end <= start) {
                     continue;
                 }
-                if (!SqGrid.cell(notes, key, target.channel(), start, end).canAdd()) {
-                    continue;
-                }
-                if (random.nextDouble() >= 0.5) {
-                    continue;
-                }
                 edit.add(target.clip(), target.channel(), key, start, end - start, target.velocity(), null);
-                count[0]++;
-            }
-            if (count[0] == 0) {
-                PianoRoll.notification("RESS-SQ: no empty cells left on this row.");
-                return;
+                added++;
             }
             edit.apply();
             refresh();
             OCx();
+            RessSq.MOD.log("Generate Row: removed " + removed + ", added " + added);
         } catch (Refused refused) {
             PianoRoll.notification(refused.getMessage());
         } catch (RuntimeException | LinkageError failure) {
