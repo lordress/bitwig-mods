@@ -95,7 +95,17 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
                 index = -1;
             }
         }
-        return name + "#" + index + "@" + Math.round(start * 96) + "-" + Math.round(end * 96);
+        String base = name + "|" + index + "|" + Math.round(start * 96);
+        // An arrangement clip keeps its state when its end moves, so the length stays out
+        // of the key. A launcher clip has no arrangement start, so its loop end tells the
+        // slots of one track apart.
+        return start < 0 ? base + "|" + Math.round(end * 96) : base;
+    }
+
+    /** The same clip even if its end moves: the first three fields of the state key. */
+    String clipIdentity() {
+        int cut = stateKey.lastIndexOf('|');
+        return cut < 0 ? stateKey : stateKey.substring(0, cut);
     }
 
     private static List<Row> rows(Wg track, DrA clip) {

@@ -44,7 +44,6 @@ Each row has its own controls in the label column:
 | Control | What it does |
 | --- | --- |
 | **N** | Rename the row: Kick, Snare, Clap, Hat, Open Hat, Rim, Tom, Ride, Crash, Perc, Bass, Chord, or **Clear** to go back to Bitwig's own pad name. The row then reads `B2 Kick`, keeping the pitch in front. |
-| **G** | Clears the row on this page and fills it with a fresh random pattern — a random number of steps, in random columns — in one Undo step. |
 | **mark** | Marks the row. **FOLD**, before **Velocity**, hides every unmarked row — useful to keep only the pads you are working on. |
 | **o** | Marks the row for **RND** and **CLR**. With no row marked they work on every row shown. |
 | **M** | Mutes the pitch. Its notes go to velocity 0 in one Undo step and keep the velocity they had, so unmuting restores it. Nothing is deleted. |
@@ -56,6 +55,9 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Tools
 
+- **FOLD** — hides every row without a mark; it is remembered per clip.
+- **DUPLICATE** — copies this bar's notes to the next bar and moves on to it, so pressing again continues down the clip; up to 8 bars.
+- **GEN** — clears the rows marked with **o** on this page and fills each with a fresh random pattern: a random number of steps, in random columns, one Undo step.
 - **RND** — replaces the velocity of every step in scope with a random value
   between 40% and 100%, in one Undo step.
 - **CLR** — removes every step in scope on the page, in one Undo step. Cells it
@@ -65,7 +67,7 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Install
 
-1. Download [`ress-sq-0.4.1.zip`](https://github.com/lordress/bitwig-mods/releases).
+1. Download [`ress-sq-0.8.0.zip`](https://github.com/lordress/bitwig-mods/releases).
 2. In Patchbay: **Mods → Add Mod…** and pick the ZIP. Do not unpack it.
 3. Tick **Framework: Piano Roll** and **RESS-SQ**, then click **Load**.
 

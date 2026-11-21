@@ -1,5 +1,6 @@
 package com.ress.sq;
 
+import bitwig.obf.DrA; // native MIDI clip
 import bitwig.obf.SZB; // native color
 import bitwig.obf.bke; // Detail Editor controller
 import bitwig.obf.dLf; // mouse press
@@ -39,7 +40,7 @@ final class SqWidget extends dwF {
     private static final SZB ERASE = new SZB(0.95f, 0.36f, 0.32f, 1f);
     // Lighter than a cell, so an unmarked row still shows its box.
     private static final SZB MARK_OFF = new SZB(0.40f, 0.42f, 0.45f, 1f);
-    private static final int TOOLS = 3;
+    private static final int TOOLS = 4;
     private static final int WHEEL_ROWS = 3;
     private static final long REFRESH_INTERVAL = 150_000_000L;
 
@@ -71,8 +72,14 @@ final class SqWidget extends dwF {
         final Map<Integer, String> names = new HashMap<>();
         /** Velocities the mute replaced, so unmuting puts them back. */
         final Map<String, Double> savedVelocity = new HashMap<>();
+        /** FOLD is per clip, like the rest of the label column. */
+        boolean fold;
+        /** Bars the grid shows, 1 to 8, set with the inc and dec buttons. */
+        int bars = -1;
     }
-    private boolean fold;
+    private static final int MAX_BARS = 8;
+    private static final int PILL = 17;
+    private static final int PILL_GAP = 4;
     private int pickerRow = -1;
     private final java.util.Random random = new java.util.Random();
     private CellGesture gesture;
@@ -233,9 +240,26 @@ final class SqWidget extends dwF {
                 OCx();
             }
             if (clipChanged) {
-                stateKey = current == null ? null : current.stateKey();
-                state = stateKey == null ? new RowState()
-                        : STATES.computeIfAbsent(stateKey, SqWidget::loadState);
+                String key = current == null ? null : current.stateKey();
+                if (key == null) {
+                    state = new RowState();
+                } else {
+                    RowState known = STATES.get(key);
+                    if (known == null && stateKey != null && current.clipIdentity().equals(identityOf(stateKey))) {
+                        // The clip was lengthened or shortened: same clip, moved end.
+                        known = state;
+                        STATES.put(key, known);
+                    } else if (known == null) {
+                        known = loadState(key);
+                        STATES.put(key, known);
+                    }
+                    state = known;
+                }
+                stateKey = key;
+                if (state.bars < 1) {
+                    int pages = current == null ? 1 : current.range().pages();
+                    state.bars = Math.max(1, Math.min(MAX_BARS, pages));
+                }
                 playingColumn = -1;
                 page = 0;
                 firstRow = current != null && current.chromatic() ? 63 : 0;
@@ -245,8 +269,17 @@ final class SqWidget extends dwF {
                 page = Math.min(page, current.range().pages() - 1);
                 firstRow = Math.min(firstRow, maxFirstRow());
             }
-            List<SqGrid.Event<SqNote>> currentNotes = current == null ? List.of() : current.notes(
-                    current.range().beat(page, 0), Math.min(current.range().end(), current.range().beat(page, SqGrid.STEPS)));
+            // The page the grid shows can be past the clip's own end, once the bar count is
+            // raised or a bar is duplicated, so the window comes from the grid's range.
+            List<SqGrid.Event<SqNote>> currentNotes;
+            if (current == null) {
+                currentNotes = List.of();
+            } else {
+                double clipStart = current.range().start();
+                double gridEnd = clipStart + bars() * SqGrid.STEPS * SqGrid.STEP;
+                double pageFrom = clipStart + page * SqGrid.STEPS * SqGrid.STEP;
+                currentNotes = current.notes(pageFrom, Math.min(gridEnd, pageFrom + SqGrid.STEPS * SqGrid.STEP));
+            }
             if (!Objects.equals(target, current) || !notes.equals(currentNotes)) {
                 target = current;
                 notes = currentNotes;
@@ -267,11 +300,19 @@ final class SqWidget extends dwF {
     private double rowHeight() { return Math.max(wGt(13), Math.min(wGt(26), column() * 0.50)); }
     private double top() { return wGt(48); }
     private double bottom() { return Math.max(top(), cBV() - wGt(25)); }
-    private double toolsWidth() { return wGt(104); }
+    private double toolsWidth() { return wGt(130); }
     private double toolsStart() { return rtK() - toolsWidth(); }
     private double toolWidth() { return toolsWidth() / TOOLS; }
     private double tabStart() { return Math.max(wGt(150), Math.min(labels() + wGt(3), rtK() - toolsWidth() - PARAMETERS.length * wGt(52))); }
     private double tabWidth() { return Math.min(wGt(70), Math.max(1, (rtK() - toolsWidth() - tabStart()) / PARAMETERS.length)); }
+    /** The grid's own range: the clip's start and as many bars as the counter says. */
+    private SqGrid.Range range() {
+        double start = target.range().start();
+        return new SqGrid.Range(start, start + bars() * SqGrid.STEPS * SqGrid.STEP);
+    }
+
+    private int bars() { return state.bars < 1 ? 1 : Math.min(MAX_BARS, state.bars); }
+
     private int visibleRows() { return Math.max(1, (int) Math.ceil((bottom() - top()) / rowHeight())); }
     private int maxFirstRow() { return Math.max(0, shownRows.size() - visibleRows()); }
 
@@ -281,7 +322,7 @@ final class SqWidget extends dwF {
         }
         List<Integer> shown = new ArrayList<>();
         for (int i = 0; i < clip.rows().size(); i++) {
-            if (!fold || state.marked.contains(clip.rows().get(i).key())) {
+            if (!state.fold || state.marked.contains(clip.rows().get(i).key())) {
                 shown.add(i);
             }
         }
@@ -301,20 +342,15 @@ final class SqWidget extends dwF {
         return slot < 0 || target == null ? -1 : target.rows().get(shownRows.get(slot)).key();
     }
 
-    private static final int PILL = 17;
-    private static final int PILL_GAP = 4;
     private double pillsRight() { return labels() - wGt(7); }
     private double soloLeft() { return pillsRight() - wGt(PILL); }
     private double muteLeft() { return soloLeft() - wGt(PILL + PILL_GAP); }
     private double scopeLeft() { return muteLeft() - wGt(PILL + PILL_GAP); }
-    private double generateLeft() { return scopeLeft() - wGt(PILL + PILL_GAP); }
     private double renameLeft() { return wGt(4); }
     private double markLeft() { return wGt(4 + PILL + 4); }
     private double nameLeft() { return wGt(4 + PILL + 4 + 13); }
-    /** RND and CLR touch the marked rows, or every row when none is marked. */
-    private boolean inScope(int key) {
-        return state.scoped.isEmpty() || state.scoped.contains(key);
-    }
+
+    private boolean inScope(int key) { return state.scoped.isEmpty() || state.scoped.contains(key); }
 
     private int cellAt(double x, double y) {
         int column = (int) Math.floor((x - labels()) / column());
@@ -357,19 +393,22 @@ final class SqWidget extends dwF {
 
     private void paintControls(com.bitwig.graphics.ijY graphics, SZB text) {
         double right = gridRight() - wGt(6);
+        rectangle(graphics, right - wGt(212), wGt(4), wGt(84), wGt(18), CELL);
+        graphics.beI(right - wGt(212) + centered("DUPLICATE", wGt(84)), wGt(17), "DUPLICATE",
+                text.beI(0.85f));
         button(graphics, right - wGt(126), wGt(4), "‹", page > 0, text);
-        graphics.beI(right - wGt(96), wGt(17), (page + 1) + " / " + target.range().pages(), text);
-        button(graphics, right - wGt(26), wGt(4), "›", page + 1 < target.range().pages(), text);
+        graphics.beI(right - wGt(96), wGt(17), (page + 1) + " / " + range().pages(), text);
+        button(graphics, right - wGt(26), wGt(4), "›", page + 1 < range().pages(), text);
         for (int column = 0; column < SqGrid.STEPS; column += 4) {
             graphics.beI(labels() + column * column() + wGt(3), wGt(41), Integer.toString(column + 1), text.beI(0.6f));
         }
         rectangle(graphics, 0, bottom(), rtK(), wGt(25), STRIP);
         double foldX = wGt(50);
-        rectangle(graphics, foldX, bottom() + wGt(3), wGt(46), wGt(18), fold ? BEAT : CELL);
-        if (fold) {
+        rectangle(graphics, foldX, bottom() + wGt(3), wGt(46), wGt(18), state.fold ? BEAT : CELL);
+        if (state.fold) {
             rectangle(graphics, foldX, bottom() + wGt(20), wGt(46), wGt(1), ACCENT);
         }
-        graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(fold ? 1f : 0.7f));
+        graphics.beI(foldX + wGt(8), bottom() + wGt(16), "FOLD", text.beI(state.fold ? 1f : 0.7f));
         // The MIDI key being played, once the fold button.
         String played = RessSq.pressedLabel();
         if (!played.isEmpty()) {
@@ -392,9 +431,9 @@ final class SqWidget extends dwF {
             graphics.beI(tabStart() + PARAMETERS.length * tabWidth() + wGt(8), bottom() + wGt(16),
                     gesture.display(), text);
         }
-        // RESS-SQ's own tools: follow the playhead, randomise, clear this page.
-        String[] labels = {"FLW", "RND", "CLR"};
-        boolean[] on = {follow, true, true};
+        // RESS-SQ's own tools: follow the playhead, generate, randomise, clear this page.
+        String[] labels = {"FLW", "GEN", "RND", "CLR"};
+        boolean[] on = {follow, true, true, true};
         for (int i = 0; i < TOOLS; i++) {
             double x = toolsStart() + i * toolWidth();
             rectangle(graphics, x + wGt(1), bottom() + wGt(3), toolWidth() - wGt(3), wGt(18),
@@ -402,7 +441,8 @@ final class SqWidget extends dwF {
             if (i == 0 && follow) {
                 rectangle(graphics, x + wGt(1), bottom() + wGt(20), toolWidth() - wGt(3), wGt(1), ACCENT);
             }
-            graphics.beI(x + wGt(5), bottom() + wGt(15), labels[i], text.beI(on[i] ? 0.85f : 0.5f));
+            graphics.beI(x + centered(labels[i], toolWidth()), bottom() + wGt(15), labels[i],
+                    text.beI(on[i] ? 0.8f : 0.5f));
         }
     }
 
@@ -419,8 +459,8 @@ final class SqWidget extends dwF {
         for (int slot = firstRow; slot < rows; slot++) {
             int key = target.rows().get(shownRows.get(slot)).key();
             for (int column = 0; column < SqGrid.STEPS; column++) {
-                double start = target.range().beat(page, column);
-                double end = Math.min(start + SqGrid.STEP, target.range().end());
+                double start = range().beat(page, column);
+                double end = Math.min(start + SqGrid.STEP, range().end());
                 if (end > start) {
                     visitor.accept(key, SqGrid.cell(notes, key, target.channel(), start, end));
                 }
@@ -482,6 +522,82 @@ final class SqWidget extends dwF {
         }
     }
 
+    /**
+     * Copies this bar's notes to the next bar and moves the grid on to it, so pressing
+     * again copies that bar into the one after. The grid grows a bar each time, up to the
+     * limit; nothing about the clip's placement length changes.
+     */
+    private void duplicateBar() {
+        if (target == null) {
+            return;
+        }
+        try {
+            if (page + 1 >= MAX_BARS) {
+                PianoRoll.notification("RESS-SQ: " + MAX_BARS + " bars is the most.");
+                return;
+            }
+            double pageStart = range().beat(page, 0);
+            double pageEnd = Math.min(range().end(), range().beat(page, SqGrid.STEPS));
+            double shift = pageEnd - pageStart;
+            if (shift <= 0) {
+                return;
+            }
+            int count = copyBar(pageStart, pageEnd, shift);
+            if (count == 0) {
+                PianoRoll.notification("RESS-SQ: nothing on this bar to duplicate.");
+                return;
+            }
+            if (count < 0) {
+                PianoRoll.notification("RESS-SQ: Bitwig refused the copy.");
+                return;
+            }
+            // Make the new bar visible, then move on to it so a second press continues.
+            if (page + 1 >= bars()) {
+                state.bars = Math.min(MAX_BARS, page + 2);
+            }
+            page = Math.min(page + 1, MAX_BARS - 1);
+            save();
+            RessSq.MOD.log("duplicate: copied " + count + " notes, bar " + page);
+            refresh();
+            OCx();
+        } catch (RuntimeException | LinkageError failure) {
+            RessSq.MOD.log("Could not duplicate the bar", failure);
+        }
+    }
+
+    /** Copies the bar one page later; -1 when Bitwig refuses because the clip is too short. */
+    private int copyBar(double pageStart, double pageEnd, double shift) {
+        Edit edit = PianoRoll.edit("Duplicate Bar");
+        Map<String, Double> moved = new HashMap<>();
+        int count = 0;
+        for (SqGrid.Event<SqNote> event : target.notes(pageStart, pageEnd)) {
+            if (event.start() >= pageStart - 1e-9 && event.start() < pageEnd - 1e-9) {
+                edit.copy(event.note().note(), event.key(), event.start() + shift, event.end() + shift);
+                // A muted row's notes copy silently; carry the velocities they had so
+                // unmuting the row later still restores the copies.
+                Double saved = state.savedVelocity.get(muteId(event));
+                if (saved != null) {
+                    moved.put(event.key() + "@" + Math.round((event.start() + shift) * 96), saved);
+                }
+                count++;
+            }
+        }
+        if (count == 0) {
+            return 0;
+        }
+        try {
+            edit.apply();
+            if (!moved.isEmpty()) {
+                state.savedVelocity.putAll(moved);
+                save();
+            }
+            return count;
+        } catch (Refused refused) {
+            RessSq.MOD.log("duplicate: refused, " + refused.getMessage());
+            return -1;
+        }
+    }
+
     private void followPlayhead() {
         if (target == null || !follow) {
             return;
@@ -531,8 +647,8 @@ final class SqWidget extends dwF {
         int column = index % SqGrid.STEPS;
         double x = labels() + column * column();
         double width = Math.max(0, column() - wGt(2));
-        double start = target.range().beat(page, column);
-        double end = Math.min(start + SqGrid.STEP, target.range().end());
+        double start = range().beat(page, column);
+        double end = Math.min(start + SqGrid.STEP, range().end());
         if (end <= start) {
             rectangle(graphics, x, y, width, height, STRIP);
             return;
@@ -563,7 +679,7 @@ final class SqWidget extends dwF {
                         label = Parameter.CHANCE.display((int) Math.round(chance * 100));
                     } else if (parameter.changesPlacement()) {
                         int value = dragging ? gesture.value : parameter.read(cell.note());
-                        SqGrid.Placement placement = parameter.placement(cell.note(), start, target.range().end(), value);
+                        SqGrid.Placement placement = parameter.placement(cell.note(), start, range().end(), value);
                         label = parameter.displayPlacement(placement, start);
                     }
                     if (label != null) {
@@ -603,13 +719,12 @@ final class SqWidget extends dwF {
         pill(graphics, renameLeft(), y, height, "N", pickerRow == key, text);
         rectangle(graphics, markLeft(), y + (height - dot) / 2, dot, dot,
                 state.marked.contains(key) ? ACCENT : MARK_OFF);
-        pill(graphics, generateLeft(), y, height, "G", false, text);
         pill(graphics, scopeLeft(), y, height, "o", scoped, text);
         pill(graphics, muteLeft(), y, height, "M", state.muted.contains(key), text);
         pill(graphics, soloLeft(), y, height, "S", state.solo.contains(key), text);
         if (height >= wGt(11)) {
             String name = rowLabel(pitch);
-            int limit = Math.max(3, (int) ((generateLeft() - wGt(18)) / Math.max(1, wGt(7))));
+            int limit = Math.max(3, (int) ((scopeLeft() - wGt(18)) / Math.max(1, wGt(7))));
             graphics.beI(nameLeft(), y + height * 0.5 + wGt(4),
                     name.length() > limit ? name.substring(0, Math.max(1, limit - 1)) + "…" : name,
                     text.beI(muted ? 0.45f : 1f));
@@ -696,7 +811,7 @@ final class SqWidget extends dwF {
         }
         if (y >= bottom() && x >= wGt(50) && x < wGt(96)) {
             return control(() -> {
-                fold = !fold;
+                state.fold = !state.fold;
                 shownRows = computeShown(target);
                 firstRow = Math.min(firstRow, maxFirstRow());
                 OCx();
@@ -714,9 +829,6 @@ final class SqWidget extends dwF {
                 if (x >= markLeft() - wGt(2) && x < markLeft() + wGt(11)) {
                     return control(() -> toggleMark(key));
                 }
-                if (x >= generateLeft() && x < generateLeft() + wGt(PILL)) {
-                    return control(() -> generateRow(key));
-                }
                 if (x >= scopeLeft() && x < scopeLeft() + wGt(PILL)) {
                     return control(() -> toggleScope(key));
                 }
@@ -730,6 +842,9 @@ final class SqWidget extends dwF {
             }
         }
         double right = gridRight() - wGt(6);
+        if (y < wGt(26) && x >= right - wGt(212) && x < right - wGt(126)) {
+            return control(this::duplicateBar);
+        }
         if (y < wGt(26) && x >= right - wGt(126) && x < right) {
             if (x <= right - wGt(101)) {
                 return control(() -> changePage(-1));
@@ -746,7 +861,8 @@ final class SqWidget extends dwF {
                         follow = !follow;
                         followPlayhead();
                     }
-                    case 1 -> randomiseVelocities();
+                    case 1 -> generateScoped();
+                    case 2 -> randomiseVelocities();
                     default -> clearPage();
                 }
                 OCx();
@@ -764,8 +880,8 @@ final class SqWidget extends dwF {
             return null;
         }
         int column = index % SqGrid.STEPS;
-        double start = target.range().beat(page, column);
-        double end = Math.min(start + SqGrid.STEP, target.range().end());
+        double start = range().beat(page, column);
+        double end = Math.min(start + SqGrid.STEP, range().end());
         if (end <= start) {
             return null;
         }
@@ -847,6 +963,15 @@ final class SqWidget extends dwF {
 
     private boolean isMuted(int key) { return mutedKeys.contains(key); }
 
+    private static String identityOf(String stateKey) {
+        int cut = stateKey.lastIndexOf('|');
+        return cut < 0 ? stateKey : stateKey.substring(0, cut);
+    }
+
+    private static String muteId(SqGrid.Event<SqNote> event) {
+        return event.key() + "@" + Math.round(event.start() * 96);
+    }
+
     private void recomputeMuted() {
         if (target == null) {
             mutedKeys = Set.of();
@@ -879,6 +1004,8 @@ final class SqWidget extends dwF {
             loaded.muted.addAll(parseInts(settings.get(prefix + "muted", "")));
             loaded.solo.addAll(parseInts(settings.get(prefix + "solo", "")));
             loaded.scoped.addAll(parseInts(settings.get(prefix + "scoped", "")));
+            loaded.fold = Boolean.parseBoolean(settings.get(prefix + "fold", "false"));
+            loaded.bars = parseBars(settings.get(prefix + "bars", "-1"));
             loaded.names.putAll(parseNames(settings.get(prefix + "names", "")));
             loaded.savedVelocity.putAll(parseValues(settings.get(prefix + "velocity", "")));
         } catch (RuntimeException | LinkageError failure) {
@@ -898,10 +1025,20 @@ final class SqWidget extends dwF {
             settings.put(prefix + "muted", joinInts(state.muted));
             settings.put(prefix + "solo", joinInts(state.solo));
             settings.put(prefix + "scoped", joinInts(state.scoped));
+            settings.put(prefix + "fold", Boolean.toString(state.fold));
+            settings.put(prefix + "bars", Integer.toString(state.bars));
             settings.put(prefix + "names", joinNames(state.names));
             settings.put(prefix + "velocity", joinValues(state.savedVelocity));
         } catch (RuntimeException | LinkageError failure) {
             RessSq.MOD.log("Could not save the row state", failure);
+        }
+    }
+
+    private static int parseBars(String text) {
+        try {
+            return Math.max(-1, Math.min(MAX_BARS, Integer.parseInt(text.trim())));
+        } catch (NumberFormatException ignored) {
+            return -1;
         }
     }
 
@@ -995,73 +1132,88 @@ final class SqWidget extends dwF {
     }
 
     /**
-     * Clears this row on the current page, then fills it with a fresh random pattern:
-     * a random number of steps from one to sixteen, in random columns. Cells held by a
-     * note starting on an earlier page are left alone so the pattern never cuts one.
+     * Clears every row marked with o on this page and fills each with a fresh random
+     * pattern: a random number of steps, in random columns, all in one Undo step. Cells
+     * held by a note starting on an earlier page are skipped so a pattern never cuts one.
      */
-    private void generateRow(int key) {
+    private void generateScoped() {
         if (target == null) {
             return;
         }
+        if (state.scoped.isEmpty()) {
+            PianoRoll.notification("RESS-SQ: mark rows with o first.");
+            return;
+        }
         try {
-            double pageStart = target.range().beat(page, 0);
-            double pageEnd = Math.min(target.range().end(), target.range().beat(page, SqGrid.STEPS));
+            double pageStart = range().beat(page, 0);
+            double pageEnd = Math.min(range().end(), range().beat(page, SqGrid.STEPS));
             if (pageEnd <= pageStart) {
                 return;
             }
-            Edit edit = PianoRoll.edit("Generate Row");
-
-            int removed = 0;
-            for (SqGrid.Event<SqNote> event : target.notes(pageStart, pageEnd)) {
-                if (event.key() == key && event.start() >= pageStart - 1e-9 && event.start() < pageEnd - 1e-9) {
-                    edit.remove(event.note().note());
-                    removed++;
+            Edit edit = PianoRoll.edit("Generate Marked Rows");
+            int added = 0;
+            int rows = 0;
+            StringBuilder keys = new StringBuilder();
+            for (SqClip.Row row : target.rows()) {
+                if (state.scoped.contains(row.key())) {
+                    added += generateInto(edit, row.key(), pageStart, pageEnd);
+                    rows++;
+                    keys.append(row.key()).append(' ');
                 }
             }
-
-            boolean[] held = new boolean[SqGrid.STEPS];
-            for (int column = 0; column < SqGrid.STEPS; column++) {
-                double start = target.range().beat(page, column);
-                double end = Math.min(start + SqGrid.STEP, target.range().end());
-                held[column] = end > start
-                        && SqGrid.cell(notes, key, target.channel(), start, end).continuation();
-            }
-
-            java.util.List<Integer> columns = new ArrayList<>();
-            for (int column = 0; column < SqGrid.STEPS; column++) {
-                if (!held[column]) {
-                    columns.add(column);
-                }
-            }
-            if (columns.isEmpty()) {
-                PianoRoll.notification("RESS-SQ: nothing to generate on this row.");
+            RessSq.MOD.log("generate: scoped=" + state.scoped.size() + " rows=" + rows + " keys=" + keys);
+            if (added == 0) {
+                PianoRoll.notification("RESS-SQ: nothing to generate on the o rows.");
                 return;
             }
-            java.util.Collections.shuffle(columns, random);
-            int wanted = 1 + random.nextInt(columns.size());
-            int added = 0;
-            for (int i = 0; i < wanted; i++) {
-                int column = columns.get(i);
-                double start = target.range().beat(page, column);
-                double end = Math.min(start + SqGrid.STEP, target.range().end());
-                if (end <= start) {
-                    continue;
-                }
-                edit.add(target.clip(), target.channel(), key, start, end - start, target.velocity(), null);
-                added++;
-            }
+            PianoRoll.notification("RESS-SQ: generated " + rows + " row" + (rows == 1 ? "" : "s"));
             edit.apply();
             refresh();
             OCx();
-            RessSq.MOD.log("Generate Row: removed " + removed + ", added " + added);
         } catch (Refused refused) {
             PianoRoll.notification(refused.getMessage());
         } catch (RuntimeException | LinkageError failure) {
-            RessSq.MOD.log("Could not generate the row", failure);
+            RessSq.MOD.log("Could not generate the marked rows", failure);
         }
     }
 
-    /** Marks this row for RND and CLR; with no row marked they work on every row shown. */
+    /** Replaces one row's pattern inside a shared plan; returns how many notes it added. */
+    private int generateInto(Edit edit, int key, double pageStart, double pageEnd) {
+        for (SqGrid.Event<SqNote> event : target.notes(pageStart, pageEnd)) {
+            if (event.key() == key && event.start() >= pageStart - 1e-9 && event.start() < pageEnd - 1e-9) {
+                edit.remove(event.note().note());
+            }
+        }
+        java.util.List<Integer> columns = new ArrayList<>();
+        for (int column = 0; column < SqGrid.STEPS; column++) {
+            double start = range().beat(page, column);
+            double end = Math.min(start + SqGrid.STEP, range().end());
+            boolean continuation = end > start
+                    && SqGrid.cell(notes, key, target.channel(), start, end).continuation();
+            if (!continuation) {
+                columns.add(column);
+            }
+        }
+        if (columns.isEmpty()) {
+            return 0;
+        }
+        java.util.Collections.shuffle(columns, random);
+        int wanted = 1 + random.nextInt(columns.size());
+        int added = 0;
+        for (int i = 0; i < wanted; i++) {
+            int column = columns.get(i);
+            double start = range().beat(page, column);
+            double end = Math.min(start + SqGrid.STEP, range().end());
+            if (end <= start) {
+                continue;
+            }
+            edit.add(target.clip(), target.channel(), key, start, end - start, target.velocity(), null);
+            added++;
+        }
+        return added;
+    }
+
+    /** Marks this row for RND and CLR;    /** Marks this row for RND and CLR; with no row marked they work on every row shown. */
     private void toggleScope(int key) {
         if (!state.scoped.remove(key)) {
             state.scoped.add(key);
@@ -1101,9 +1253,9 @@ final class SqWidget extends dwF {
         }
         try {
             Edit edit = PianoRoll.edit(label);
-            for (SqGrid.Event<SqNote> event : target.notes(target.range().start(), target.range().end())) {
+            for (SqGrid.Event<SqNote> event : target.notes(range().start(), range().end())) {
                 Note note = event.note().note();
-                String id = event.key() + "@" + Math.round(event.start() * 96);
+                String id = muteId(event);
                 Double saved = state.savedVelocity.get(id);
                 if (mutedKeys.contains(event.key())) {
                     if (saved == null) {
@@ -1125,7 +1277,7 @@ final class SqWidget extends dwF {
 
     private void changePage(int delta) {
         if (target != null) {
-            page = Math.max(0, Math.min(target.range().pages() - 1, page + delta));
+            page = Math.max(0, Math.min(range().pages() - 1, page + delta));
             playingColumn = -1;
             refresh();
             OCx();
