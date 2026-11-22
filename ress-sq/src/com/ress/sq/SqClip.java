@@ -27,7 +27,7 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
 
     static SqClip read(bke editor) {
         bpF lane = clipLane(editor);
-        if (lane == null || !(lane.mV_() instanceof DrA nativeClip) || !nativeClip.sSO()) {
+        if (lane == null || !(lane.mV_() instanceof DrA nativeClip)) {
             return null;
         }
         Clip clip = PianoRoll.clip(nativeClip);
@@ -48,41 +48,42 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
                 stateKey(track, start, end));
     }
 
+    /**
+     * The lane to work on. After clips are deleted the editor can still list lanes from them
+     * for a while, and a clip that was just made may not be editable for a moment, so the lane
+     * is chosen by what can actually be edited and falls back to the focused one.
+     */
     private static bpF clipLane(bke editor) {
         if (editor.Xit() == null) {
             return null;
         }
-        if (editor.GwM() instanceof bpF focused) {
+        bpF focused = editor.GwM() instanceof bpF candidate ? candidate : null;
+        bpF editable = null;
+        boolean several = false;
+        for (Object layer : editor.jTT()) {
+            if (!(layer instanceof bpF lane) || !(lane.mV_() instanceof DrA dra)) {
+                continue;
+            }
+            if (PianoRoll.clip(dra) == null) {
+                continue;
+            }
+            if (editable != null && editable.mV_() != lane.mV_()) {
+                several = true;
+            }
+            editable = lane;
+        }
+        if (editable != null && !several) {
+            return editable;
+        }
+        if (several) {
+            return focused != null && focused.mV_() instanceof DrA ? focused : null;
+        }
+        // Nothing editable is listed: the focused lane is the best remaining answer, and the
+        // lane of a clip that was just made may report itself uneditable for one frame.
+        if (focused != null && focused.mV_() instanceof DrA) {
             return focused;
         }
-        // After a clip is deleted and another made, the editor can still hold the old lane
-        // for a moment. Prefer the lanes of clips that can actually be edited, so the stale
-        // one doesn't make the editor look ambiguous.
-        bpF onlyEditable = null;
-        bpF anyClip = null;
-        boolean severalEditable = false;
-        for (Object layer : editor.jTT()) {
-            if (!(layer instanceof bpF clip) || !(clip.mV_() instanceof DrA nativeClip)) {
-                continue;
-            }
-            if (anyClip == null) {
-                anyClip = clip;
-            }
-            if (!nativeClip.sSO()) {
-                continue;
-            }
-            if (onlyEditable != null && onlyEditable.mV_() != clip.mV_()) {
-                severalEditable = true;
-            }
-            onlyEditable = clip;
-        }
-        if (onlyEditable != null && !severalEditable) {
-            return onlyEditable;
-        }
-        if (severalEditable) {
-            return null;
-        }
-        return anyClip;
+        return null;
     }
 
     private static Wg track(bpF lane, DrA clip) {
