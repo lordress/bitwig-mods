@@ -36,6 +36,18 @@ Muted rows draw dimmed and drop out of **RND** and **CLR**. Marks, names, mutes,
 solos and the **o** scope belong to the clip: they survive switching clips and
 quitting Bitwig.
 
+## Grid
+
+The header has two toggles:
+
+- **`16 st` / `32 st`** — how many steps a page shows.
+- **`1/16` / `1/8` / `1/32`** — what one step is worth. A page is that many steps long, so
+  `1/16` with 16 steps is one bar and `1/8` with 32 steps is four.
+
+Both choices are remembered. A painted note is a sixteenth long by default, or the step's
+own length on a finer grid so it cannot overrun its cell. With **FOLD** on, painting only
+writes to marked keys.
+
 ## Tools
 
 - **GEN** — clears the **marked** rows on this page and fills each with a fresh random pattern: a random number of steps, in random columns, one Undo step.
@@ -47,7 +59,7 @@ quitting Bitwig.
 
 ## Install
 
-Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.0.zip` (do not unpack it) →
+Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.8.zip` (do not unpack it) →
 tick **Framework: Piano Roll** and **RESS-SQ** → **Load**.
 
 Needs `piano-roll-framework` 0.2.0-dev.1 or newer. Built against Bitwig 6.1.7 on
