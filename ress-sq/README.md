@@ -59,7 +59,7 @@ writes to marked keys.
 
 ## Install
 
-Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.8.zip` (do not unpack it) →
+Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.9.zip` (do not unpack it) →
 tick **Framework: Piano Roll** and **RESS-SQ** → **Load**.
 
 Needs `piano-roll-framework` 0.2.0-dev.1 or newer. Built against Bitwig 6.1.7 on

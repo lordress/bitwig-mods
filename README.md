@@ -70,7 +70,7 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Install
 
-1. Download [`ress-sq-0.8.0.zip`](https://github.com/lordress/bitwig-mods/releases).
+1. Download [`ress-sq-0.5.9.zip`](https://github.com/lordress/bitwig-mods/releases).
 2. In Patchbay: **Mods → Add Mod…** and pick the ZIP. Do not unpack it.
 3. Tick **Framework: Piano Roll** and **RESS-SQ**, then click **Load**.
 
