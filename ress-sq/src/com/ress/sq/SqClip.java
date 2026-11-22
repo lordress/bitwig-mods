@@ -9,7 +9,8 @@ import bitwig.obf.bpF; // a clip's note editor layer
 import bitwig.obf.YCD; // note drawing state
 import bitwig.obf.ZkN; // a clip's note lane for one pitch and channel
 import bitwig.obf.Wg; // track
-import bitwig.obf.DrA; // MIDI clip
+import bitwig.obf.DrA;
+import bitwig.obf.iC2; // MIDI clip
 import bitwig.obf.PiT; // track's note and drum-pad model
 import bml.pianoroll.Clip;
 import bml.pianoroll.PianoRoll;
@@ -32,8 +33,9 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
         Clip clip = PianoRoll.clip(nativeClip);
         double start = nativeClip.dC_();
         double end = nativeClip.GwM();
-        if (nativeClip.Xit()) {
-            end = Math.max(end, nativeClip.vce().oiY());
+        // A clip that was just made can still report its content end before its loop is set.
+        if (nativeClip.vce() instanceof iC2 loop && loop.oiY() > end) {
+            end = loop.oiY();
         }
         if (clip == null || !Double.isFinite(start) || !Double.isFinite(end) || end <= start) {
             return null;
@@ -53,17 +55,34 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
         if (editor.GwM() instanceof bpF focused) {
             return focused;
         }
-        bpF onlyClip = null;
+        // After a clip is deleted and another made, the editor can still hold the old lane
+        // for a moment. Prefer the lanes of clips that can actually be edited, so the stale
+        // one doesn't make the editor look ambiguous.
+        bpF onlyEditable = null;
+        bpF anyClip = null;
+        boolean severalEditable = false;
         for (Object layer : editor.jTT()) {
-            if (!(layer instanceof bpF clip)) {
+            if (!(layer instanceof bpF clip) || !(clip.mV_() instanceof DrA nativeClip)) {
                 continue;
             }
-            if (onlyClip != null && onlyClip.mV_() != clip.mV_()) {
-                return null;
+            if (anyClip == null) {
+                anyClip = clip;
             }
-            onlyClip = clip;
+            if (!nativeClip.sSO()) {
+                continue;
+            }
+            if (onlyEditable != null && onlyEditable.mV_() != clip.mV_()) {
+                severalEditable = true;
+            }
+            onlyEditable = clip;
         }
-        return onlyClip;
+        if (onlyEditable != null && !severalEditable) {
+            return onlyEditable;
+        }
+        if (severalEditable) {
+            return null;
+        }
+        return anyClip;
     }
 
     private static Wg track(bpF lane, DrA clip) {

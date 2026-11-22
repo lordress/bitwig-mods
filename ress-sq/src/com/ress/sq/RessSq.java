@@ -212,9 +212,17 @@ public final class RessSq {
         return null;
     }
 
+    /** The Detail Editor panel last mounted, so a widget can reach its note selection. */
+    private static volatile aNi PANEL;
+
+    static aNi panel() {
+        return PANEL;
+    }
+
     @Hook(target = aNi.class, method = "Gef(LHSH;Lbke;LbaN;)V", at = At.BEFORE_RETURN)
     public static void mount(@This aNi panel) {
         try {
+            PANEL = panel;
             dXL layout = panel.GKF;
             dwF left = layout.n_(0).n_(0);
             dXL right = (dXL) layout.n_(1);

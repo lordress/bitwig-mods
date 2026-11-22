@@ -38,9 +38,7 @@ quitting Bitwig.
 
 ## Tools
 
-- **FOLD** — hides every row without a mark; it is remembered per clip.
-- **DUPLICATE** — copies this bar's notes to the next bar and moves on to it, so pressing again continues down the clip; up to 8 bars.
-- **GEN** — clears the rows marked with **o** on this page and fills each with a fresh random pattern: a random number of steps, in random columns, one Undo step.
+- **GEN** — clears the **marked** rows on this page and fills each with a fresh random pattern: a random number of steps, in random columns, one Undo step.
 - **RND** — randomises the velocity of every step in scope, 40% to 100%, one Undo
   step.
 - **CLR** — removes every step in scope on the page, one Undo step.
@@ -49,7 +47,7 @@ quitting Bitwig.
 
 ## Install
 
-Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.8.0.zip` (do not unpack it) →
+Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.0.zip` (do not unpack it) →
 tick **Framework: Piano Roll** and **RESS-SQ** → **Load**.
 
 Needs `piano-roll-framework` 0.2.0-dev.1 or newer. Built against Bitwig 6.1.7 on

@@ -55,6 +55,12 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Tools
 
+- **Grid size** — the `1/16` button in the header cycles the grid to `1/8` or `1/32`
+  and back; the choice is remembered.
+- **Grid** — the header has two toggles: `16 st` / `32 st` for how many steps a page
+  shows, and `1/16` / `1/8` / `1/32` for what one step is worth. A new note is a
+  sixteenth long by default. Both choices are remembered.
+- **FOLD** — with it on, painting only writes to marked keys, so folded rows stay empty.
 - **FOLD** — hides every row without a mark; it is remembered per clip.
 - **DUPLICATE** — copies this bar's notes to the next bar and moves on to it, so pressing again continues down the clip; up to 8 bars.
 - **GEN** — clears the rows marked with **o** on this page and fills each with a fresh random pattern: a random number of steps, in random columns, one Undo step.

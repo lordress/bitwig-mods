@@ -4,11 +4,26 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 final class SqGrid {
-    static final int STEPS = 16;
-    static final double STEP = 0.25;
-    static final double TIME_INCREMENT = STEP / 4;
+    /** Steps a page shows: sixteen or thirty-two, set with the grid's step-count button. */
+    static int STEPS = 16;
+    /** One step in beats: a sixteenth, an eighth or a thirty-second of a whole note. */
+    static double STEP = 0.25;
+    static double TIME_INCREMENT = STEP / 4;
     private static final double NATIVE_TICK = 1.0 / 1048576;
-    private static final double PAGE = STEPS * STEP;
+    /** One page, sixteen steps long, so the page length changes with the resolution. */
+    static double PAGE = STEPS * STEP;
+
+    /**
+     * Sets the note length one step stands for: 16 is a sixteenth note, 8 an eighth, 32 a
+     * thirty-second. The grid keeps sixteen columns, so a page is eight or two beats long
+     * instead of four at the finer resolutions.
+     */
+    static void configure(int divisor, int columns) {
+        STEP = 4.0 / Math.max(1, divisor);
+        TIME_INCREMENT = STEP / 4;
+        STEPS = columns == 32 ? 32 : 16;
+        PAGE = STEPS * STEP;
+    }
     private static final double EPSILON = 1e-9;
 
     record Range(double start, double end) {
@@ -50,7 +65,14 @@ final class SqGrid {
         double latest = Math.min(cellStart + STEP - NATIVE_TICK, clipEnd - length);
         // Existing notes can extend beyond the editable range. Leave those tails intact.
         latest = Math.max(note.start(), latest);
-        double start = Math.clamp(note.start() + increments * TIME_INCREMENT, cellStart, latest);
+        // Offset moves in 5% of a step, and down as well as up: a note may start up to a whole
+        // step before its cell, so a negative offset is a real position, not a clamped zero.
+        double move = increments * STEP * 0.05;
+        double earliest = Math.max(0.0, cellStart - STEP);
+        if (earliest > latest) {
+            earliest = latest;
+        }
+        double start = Math.clamp(note.start() + move, earliest, latest);
         return new Placement(note.key(), start, start + length);
     }
 

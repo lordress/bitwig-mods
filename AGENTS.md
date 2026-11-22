@@ -15,3 +15,10 @@ installs and loads.
 `docs/patchbay-launcher.md` is the shared manifest, copied from
 [polarity/bitwig-mods](https://github.com/polarity/bitwig-mods); keep it in step
 with upstream rather than editing the rules here.
+
+## Versioning
+
+A mod's `mod.json` version is `X.Y.Z` for a release. While a version is still being
+worked on, iterate with a pre-release suffix and move **only that suffix**:
+`0.5.8-dev.1`, `0.5.8-dev.2`, ... Every build of the same work keeps the same
+`X.Y.Z` until it is released; do not step `Z` for each local build.

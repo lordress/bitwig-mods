@@ -96,6 +96,8 @@ def finish_manifest(source, hooks):
         manifest["opens"] = opens
     if source.get("requires"):
         manifest["requires"] = source["requires"]
+    if source.get("registrations"):
+        manifest["registrations"] = source["registrations"]
     manifest["resources"] = {
         "readme": {"kind": "file", "path": "README.md", "media_type": "text/markdown"}
     }
@@ -116,23 +118,25 @@ def main():
                         help="Bitwig's bin folder, or Contents/Java on macOS")
     parser.add_argument("--modkit", required=True, type=Path,
                         help="folder holding bml-api.jar and bml-modkit.jar")
-    parser.add_argument("--framework", required=True, type=Path,
-                        help="the piano-roll-framework helper.jar")
+    parser.add_argument("--framework", required=True, type=Path, nargs="+",
+                        help="one or more framework helper.jars, for the classpath and finish")
     parser.add_argument("--jdk-bin", required=True, type=Path,
                         help="folder holding java, javac and jar")
+    parser.add_argument("--mod", default=MOD, help="the mod folder to build (default: ress-sq)")
     parser.add_argument("--out", type=Path, default=REPO / "dist")
     parser.add_argument("--replace", action="store_true",
                         help="rebuild over an existing ZIP")
     args = parser.parse_args()
 
-    mod_dir = REPO / MOD
+    mod = args.mod
+    mod_dir = REPO / mod
     source = json.loads((mod_dir / "mod.json").read_text(encoding="utf-8"))
     version = source["mod"]["version"]
     bitwig_version = source["built_against"]["bitwig_version"]
 
     bitwig = args.bitwig_bin.resolve()
     bitwig_jar, libs_jar = bitwig / "bitwig.jar", bitwig / "libs.jar"
-    for required in (bitwig_jar, libs_jar, args.framework, args.modkit / "bml-api.jar",
+    for required in (bitwig_jar, libs_jar, *args.framework, args.modkit / "bml-api.jar",
                      args.modkit / "bml-modkit.jar"):
         if not required.exists():
             sys.exit(f"MISSING {required}")
@@ -142,12 +146,12 @@ def main():
 
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    package = out / f"{MOD}-{version}.zip"
+    package = out / f"{mod}-{version}.zip"
     if package.exists() and not args.replace:
         sys.exit(f"EXISTS {package} (pass --replace to rebuild)")
 
-    work = Path(tempfile.mkdtemp(prefix=f"{MOD}-build-"))
-    classes, stage = work / "classes", work / MOD
+    work = Path(tempfile.mkdtemp(prefix=f"{mod}-build-"))
+    classes, stage = work / "classes", work / mod
     classes.mkdir(parents=True)
     stage.mkdir(parents=True)
 
@@ -156,8 +160,9 @@ def main():
     if not compile_jar.exists():
         run([java, "-jar", args.modkit / "bml-modkit.jar", "compile-jar", bitwig_jar, compile_jar])
 
+    frameworks = [f.resolve() for f in args.framework]
     classpath = ":".join(str(p) for p in (
-        compile_jar, libs_jar, args.modkit / "bml-api.jar", args.framework.resolve()))
+        compile_jar, libs_jar, args.modkit / "bml-api.jar", *frameworks))
     sources = sorted(str(p) for p in (mod_dir / "src").rglob("*.java"))
     if not sources:
         sys.exit(f"NO_SOURCES {mod_dir / 'src'}")
@@ -166,7 +171,7 @@ def main():
 
     hooks_json = work / "hooks.json"
     run([java, "-jar", args.modkit / "bml-modkit.jar", "finish", classes, hooks_json,
-         bitwig_jar, libs_jar, args.framework.resolve()])
+         bitwig_jar, libs_jar, *frameworks])
     hooks = json.loads(hooks_json.read_text(encoding="utf-8"))
 
     (stage / "mod.json").write_text(
@@ -194,11 +199,11 @@ def main():
     with ZipFile(package, "w", ZIP_DEFLATED) as archive:
         for path in sorted(stage.rglob("*")):
             if path.is_file():
-                archive.write(path, f"{MOD}/{path.relative_to(stage).as_posix()}")
+                archive.write(path, f"{mod}/{path.relative_to(stage).as_posix()}")
 
     print(f"BUILD_OK {package} hooks={len(hooks['hooks'])} "
           f"opens={len(hooks['access'])} sha256={sha256(package)}")
-    print(f"ZIP top level: {MOD}/  ({package.stat().st_size} bytes)")
+    print(f"ZIP top level: {mod}/  ({package.stat().st_size} bytes)")
     shutil.rmtree(work, ignore_errors=True)
 
 
