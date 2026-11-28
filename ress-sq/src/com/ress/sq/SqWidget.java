@@ -44,6 +44,8 @@ final class SqWidget extends dwF {
         "a86ef5", "ff8a00", "e8534b", "ec4d9a", "c04bd8",
         "5b74e8", "3aa6f0", "2fb6b0", "48b862", "9ec93c", "e8c33a"};
     private static String themeChoice = "a86ef5";
+    /** When on, the accent follows the clip's colour instead of the picked colour. */
+    private static boolean autoAccent;
     private static SZB ACCENT = PURPLE;
     /** Bitwig's play marker colour, used when the clip has no colour of its own. */
     private static final SZB PLAYHEAD = new SZB(0.98f, 0.71f, 0.32f, 1f);
@@ -195,6 +197,7 @@ final class SqWidget extends dwF {
             columns = 16;
         }
         applyGrid();
+        autoAccent = Boolean.parseBoolean(RessSq.MOD.settings().get("auto", "false").trim());
         String stored = RessSq.MOD.settings().get("theme", "a86ef5").trim();
         themeChoice = "auto".equals(stored) || "purple".equals(stored) || stored.isEmpty() ? "a86ef5"
                 : "orange".equals(stored) ? "ff8a00" : stored;
@@ -234,6 +237,11 @@ final class SqWidget extends dwF {
      * colour and falls back to the mod's purple when the clip has none.
      */
     private void applyTheme() {
+        if (autoAccent) {
+            // The clip's colour, the same one Bitwig paints its play marker and notes with.
+            ACCENT = playhead();
+            return;
+        }
         try {
             int rgb = Integer.parseInt(themeChoice, 16);
             ACCENT = new SZB(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1f);
@@ -242,8 +250,19 @@ final class SqWidget extends dwF {
         }
     }
 
+    /** Turns Auto on or off: with it on, the accent is the clip's own colour. */
+    private void toggleAuto() {
+        autoAccent = !autoAccent;
+        RessSq.MOD.settings().put("auto", Boolean.toString(autoAccent));
+        applyTheme();
+        refresh();
+        OCx();
+    }
+
     private void chooseTheme(String choice) {
         themeChoice = choice;
+        autoAccent = false;
+        RessSq.MOD.settings().put("auto", "false");
         RessSq.MOD.settings().put("theme", choice);
         themePicker = false;
         applyTheme();
@@ -460,14 +479,17 @@ final class SqWidget extends dwF {
             SZB text = mWG().beI(this);
             rectangle(graphics, 0, 0, rtK(), cBV(), BACKGROUND);
             rectangle(graphics, 0, 0, rtK(), wGt(26), STRIP);
-            graphics.beI(wGt(9), wGt(17), "RESS-SQ  ·  " + columns + " Steps  ·  " + divisionLabel(), text);
+            // The clip's colour, as Bitwig's own play marker shows it. Display only: it has
+            // no click and no setting of its own.
+            rectangle(graphics, wGt(11), wGt(6), wGt(10), wGt(10), ACCENT);
+            graphics.beI(wGt(27), wGt(17), "RESS-SQ  ·  " + columns + " Steps  ·  " + divisionLabel(), text);
             if (target == null) {
                 graphics.beI(wGt(9), wGt(45), "Open a single editable MIDI clip to use Steps.", text);
                 return;
             }
             paintControls(graphics, text);
             if (playingColumn >= 0) {
-                rectangle(graphics, labels() + playingColumn * column(), wGt(44), column() - wGt(2), wGt(2), playhead());
+                rectangle(graphics, labels() + playingColumn * column(), wGt(44), column() - wGt(2), wGt(2), ACCENT);
             }
             paintGrid(graphics, text);
             if (pickerRow >= 0) {
@@ -483,6 +505,9 @@ final class SqWidget extends dwF {
 
     private void paintControls(com.bitwig.graphics.ijY graphics, SZB text) {
         double right = gridRight() - wGt(6);
+        rectangle(graphics, right - wGt(330), wGt(4), wGt(38), wGt(18), autoAccent ? ACCENT.beI(0.45f) : CELL);
+        graphics.beI(right - wGt(330) + centered("Auto", wGt(38)), wGt(17), "Auto",
+                text.beI(autoAccent ? 1f : 0.8f));
         rectangle(graphics, right - wGt(286), wGt(4), wGt(50), wGt(18), themePicker ? BEAT : CELL);
         rectangle(graphics, right - wGt(282), wGt(6), wGt(13), wGt(13), ACCENT);
         graphics.beI(right - wGt(264), wGt(17), "Theme", text.beI(0.85f));
@@ -640,7 +665,8 @@ final class SqWidget extends dwF {
     }
 
     private void paintGrid(com.bitwig.graphics.ijY graphics, SZB text) {
-        SZB color = target.color() == null || target.color().Anf() == 0f ? ACCENT : target.color().beI();
+        // One colour for the grid: the theme's, or the clip's while Auto is on.
+        SZB color = ACCENT;
         int rows = Math.min(shownRows.size() - firstRow, visibleRows());
         for (int slot = 0; slot < rows; slot++) {
             int index = shownRows.get(firstRow + slot);
@@ -677,7 +703,7 @@ final class SqWidget extends dwF {
         SqGrid.Cell<SqNote> cell = SqGrid.cell(notes, row.key(), target.channel(), start, end);
         rectangle(graphics, x, y, width, height, column % 4 == 0 ? BEAT : CELL);
         if (column == playingColumn) {
-            rectangle(graphics, x, y, width, height, playhead().beI(0.36f));
+            rectangle(graphics, x, y, width, height, ACCENT.beI(0.36f));
         }
         boolean pending = gesture != null && gesture.pending.get(index);
         if (cell.starts() > 0) {
@@ -865,6 +891,9 @@ final class SqWidget extends dwF {
         double right = gridRight() - wGt(6);
         if (themePicker) {
             return control(() -> themeClick(x, y));
+        }
+        if (y < wGt(26) && x >= right - wGt(330) && x < right - wGt(292)) {
+            return control(this::toggleAuto);
         }
         if (y < wGt(26) && x >= right - wGt(286) && x < right - wGt(236)) {
             return control(() -> {

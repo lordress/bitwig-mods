@@ -55,8 +55,9 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Tools
 
-- **Theme** — the `Theme` button in the header opens a palette of eleven colours; the
-  choice is remembered.
+- **Theme** — `Theme` in the header opens a palette of eleven colours. The `Auto`
+  toggle beside it takes the colour from the clip instead, and the marker at the
+  start of the header shows whichever colour is in use. Both are remembered.
 - **Grid** — the header has two toggles: `16 st` / `32 st` for how many steps a page
   shows, and `1/16` / `1/8` / `1/32` for what one step is worth. A new note is a
   sixteenth long by default. Both choices are remembered.
@@ -72,7 +73,7 @@ back and they are as you left them, and they survive quitting Bitwig.
 
 ## Install
 
-1. Download [`ress-sq-0.5.11.zip`](https://github.com/lordress/bitwig-mods/releases).
+1. Download [`ress-sq-0.5.12.zip`](https://github.com/lordress/bitwig-mods/releases).
 2. In Patchbay: **Mods → Add Mod…** and pick the ZIP. Do not unpack it.
 3. Tick **Framework: Piano Roll** and **RESS-SQ**, then click **Load**.
 

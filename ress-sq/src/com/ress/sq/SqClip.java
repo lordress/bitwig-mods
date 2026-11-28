@@ -44,7 +44,7 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
         double velocity = drawing == null ? 0.0 : drawing.Ktd();
         Wg track = track(lane, nativeClip);
         return new SqClip(clip, new SqGrid.Range(start, end), lane.mb_(),
-                velocity > 0 ? velocity : 100.0 / 127.0, rows(track, nativeClip), nativeClip.IvP(),
+                velocity > 0 ? velocity : 100.0 / 127.0, rows(track, nativeClip), color(nativeClip),
                 stateKey(track, start, end));
     }
 
@@ -53,6 +53,15 @@ record SqClip(Clip clip, SqGrid.Range range, int channel, double velocity, List<
      * for a while, and a clip that was just made may not be editable for a moment, so the lane
      * is chosen by what can actually be edited and falls back to the focused one.
      */
+    /**
+     * The clip's own colour, which is what Bitwig paints its play marker and its notes with.
+     * A clip that has none takes the track's colour, which is what IvP() reports.
+     */
+    private static SZB color(DrA clip) {
+        SZB own = clip.iqe();
+        return own != null && own.Anf() != 0f ? own : clip.IvP();
+    }
+
     private static bpF clipLane(bke editor) {
         if (editor.Xit() == null) {
             return null;
