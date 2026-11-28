@@ -39,8 +39,13 @@ final class SqWidget extends dwF {
     // RESS-SQ's own palette: violet steps, amber playhead, red eraser.
     /** Purple, or Bitwig's orange; the header's swatch switches between them. */
     private static final SZB PURPLE = new SZB(0.66f, 0.42f, 0.96f, 1f);
-    private static final SZB ORANGE = new SZB(1.00f, 0.54f, 0.06f, 1f);
+    /** The colours the Theme picker offers, in order, as "rrggbb". */
+    private static final String[] THEMES = {
+        "a86ef5", "ff8a00", "e8534b", "ec4d9a", "c04bd8",
+        "5b74e8", "3aa6f0", "2fb6b0", "48b862", "9ec93c", "e8c33a"};
+    private static String themeChoice = "a86ef5";
     private static SZB ACCENT = PURPLE;
+    /** Bitwig's play marker colour, used when the clip has no colour of its own. */
     private static final SZB PLAYHEAD = new SZB(0.98f, 0.71f, 0.32f, 1f);
     private static final SZB ERASE = new SZB(0.95f, 0.36f, 0.32f, 1f);
     // Lighter than a cell, so an unmarked row still shows its box.
@@ -81,6 +86,7 @@ final class SqWidget extends dwF {
         boolean fold;
     }
     private int pickerRow = -1;
+    private boolean themePicker;
     private final java.util.Random random = new java.util.Random();
     private CellGesture gesture;
     private dsB frames;
@@ -189,9 +195,19 @@ final class SqWidget extends dwF {
             columns = 16;
         }
         applyGrid();
-        if ("orange".equalsIgnoreCase(RessSq.MOD.settings().get("theme", "purple").trim())) {
-            ACCENT = ORANGE;
-        }
+        String stored = RessSq.MOD.settings().get("theme", "a86ef5").trim();
+        themeChoice = "auto".equals(stored) || "purple".equals(stored) || stored.isEmpty() ? "a86ef5"
+                : "orange".equals(stored) ? "ff8a00" : stored;
+        applyTheme();
+    }
+
+    /**
+     * The play marker's colour: the clip's own colour, as Bitwig paints its play marker, and
+     * Bitwig's amber when the clip has none.
+     */
+    private SZB playhead() {
+        SZB clip = target == null ? null : target.color();
+        return clip != null && clip.Anf() != 0f ? clip.beI() : PLAYHEAD;
     }
 
     private void applyGrid() {
@@ -213,10 +229,24 @@ final class SqWidget extends dwF {
         OCx();
     }
 
-    /** Switches the accent between the mod's purple and Bitwig's orange. */
-    private void cycleTheme() {
-        ACCENT = ACCENT == PURPLE ? ORANGE : PURPLE;
-        RessSq.MOD.settings().put("theme", ACCENT == PURPLE ? "purple" : "orange");
+    /**
+     * The accent: a colour picked from the palette, or Auto, which follows the clip's own
+     * colour and falls back to the mod's purple when the clip has none.
+     */
+    private void applyTheme() {
+        try {
+            int rgb = Integer.parseInt(themeChoice, 16);
+            ACCENT = new SZB(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1f);
+        } catch (NumberFormatException ignored) {
+            ACCENT = PURPLE;
+        }
+    }
+
+    private void chooseTheme(String choice) {
+        themeChoice = choice;
+        RessSq.MOD.settings().put("theme", choice);
+        themePicker = false;
+        applyTheme();
         refresh();
         OCx();
     }
@@ -328,6 +358,7 @@ final class SqWidget extends dwF {
                 page = 0;
                 firstRow = current != null && current.chromatic() ? 63 : 0;
             }
+            applyTheme();
             shownRows = computeShown(current);
             if (current != null) {
                 page = Math.min(page, current.range().pages() - 1);
@@ -420,6 +451,9 @@ final class SqWidget extends dwF {
             return;
         }
         watch();
+        // Auto follows the clip's colour, so it is worked out again on every paint: the
+        // inspector can recolour the clip without the clip's notes changing.
+        applyTheme();
         graphics.ZRB();
         try {
             graphics.beI(kI_().beI(fxI(), this));
@@ -433,11 +467,14 @@ final class SqWidget extends dwF {
             }
             paintControls(graphics, text);
             if (playingColumn >= 0) {
-                rectangle(graphics, labels() + playingColumn * column(), wGt(44), column() - wGt(2), wGt(2), PLAYHEAD);
+                rectangle(graphics, labels() + playingColumn * column(), wGt(44), column() - wGt(2), wGt(2), playhead());
             }
             paintGrid(graphics, text);
             if (pickerRow >= 0) {
                 paintPicker(graphics, text);
+            }
+            if (themePicker) {
+                paintThemePicker(graphics, text);
             }
         } finally {
             graphics.jTs();
@@ -446,9 +483,11 @@ final class SqWidget extends dwF {
 
     private void paintControls(com.bitwig.graphics.ijY graphics, SZB text) {
         double right = gridRight() - wGt(6);
-        rectangle(graphics, right - wGt(262), wGt(4), wGt(18), wGt(18), ACCENT);
-        rectangle(graphics, right - wGt(224), wGt(4), wGt(42), wGt(18), CELL);
-        graphics.beI(right - wGt(224) + centered(columns + " st", wGt(42)), wGt(17),
+        rectangle(graphics, right - wGt(286), wGt(4), wGt(50), wGt(18), themePicker ? BEAT : CELL);
+        rectangle(graphics, right - wGt(282), wGt(6), wGt(13), wGt(13), ACCENT);
+        graphics.beI(right - wGt(264), wGt(17), "Theme", text.beI(0.85f));
+        rectangle(graphics, right - wGt(226), wGt(4), wGt(42), wGt(18), CELL);
+        graphics.beI(right - wGt(226) + centered(columns + " st", wGt(42)), wGt(17),
                 columns + " st", text.beI(0.85f));
         rectangle(graphics, right - wGt(176), wGt(4), wGt(42), wGt(18), CELL);
         graphics.beI(right - wGt(176) + centered(divisionLabel(), wGt(42)), wGt(17),
@@ -638,7 +677,7 @@ final class SqWidget extends dwF {
         SqGrid.Cell<SqNote> cell = SqGrid.cell(notes, row.key(), target.channel(), start, end);
         rectangle(graphics, x, y, width, height, column % 4 == 0 ? BEAT : CELL);
         if (column == playingColumn) {
-            rectangle(graphics, x, y, width, height, PLAYHEAD.beI(0.36f));
+            rectangle(graphics, x, y, width, height, playhead().beI(0.36f));
         }
         boolean pending = gesture != null && gesture.pending.get(index);
         if (cell.starts() > 0) {
@@ -824,10 +863,16 @@ final class SqWidget extends dwF {
             }
         }
         double right = gridRight() - wGt(6);
-        if (y < wGt(26) && x >= right - wGt(262) && x < right - wGt(244)) {
-            return control(this::cycleTheme);
+        if (themePicker) {
+            return control(() -> themeClick(x, y));
         }
-        if (y < wGt(26) && x >= right - wGt(224) && x < right - wGt(182)) {
+        if (y < wGt(26) && x >= right - wGt(286) && x < right - wGt(236)) {
+            return control(() -> {
+                themePicker = !themePicker;
+                OCx();
+            });
+        }
+        if (y < wGt(26) && x >= right - wGt(226) && x < right - wGt(184)) {
             return control(this::cycleColumns);
         }
         if (y < wGt(26) && x >= right - wGt(176) && x < right - wGt(134)) {
@@ -908,6 +953,42 @@ final class SqWidget extends dwF {
     }
 
     private double pickerHeight() { return pickerCount() * pickerLine() + wGt(6); }
+
+    /** The Theme palette: one row of colour swatches under the header. */
+    private void paintThemePicker(com.bitwig.graphics.ijY graphics, SZB text) {
+        double cell = wGt(22);
+        double width = THEMES.length * cell + wGt(8);
+        double x = gridRight() - wGt(6) - width;
+        double y = wGt(28);
+        rectangle(graphics, x, y - wGt(4), width, cell + wGt(8), STRIP);
+        for (int i = 0; i < THEMES.length; i++) {
+            double left = x + wGt(4) + i * cell;
+            int rgb = Integer.parseInt(THEMES[i], 16);
+            SZB colour = new SZB(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1f);
+            rectangle(graphics, left, y, cell - wGt(2), cell, colour);
+            if (THEMES[i].equals(themeChoice)) {
+                rectangle(graphics, left, y + cell - wGt(2), cell - wGt(2), wGt(2), text);
+            }
+        }
+    }
+
+    /** A click on a swatch picks it; anywhere else closes the palette. */
+    private boolean themeClick(double x, double y) {
+        double cell = wGt(22);
+        double width = THEMES.length * cell + wGt(8);
+        double left = gridRight() - wGt(6) - width + wGt(4);
+        double top = wGt(28);
+        if (y >= top && y < top + cell) {
+            int index = (int) ((x - left) / cell);
+            if (index >= 0 && index < THEMES.length) {
+                chooseTheme(THEMES[index]);
+                return true;
+            }
+        }
+        themePicker = false;
+        OCx();
+        return true;
+    }
 
     private void paintPicker(com.bitwig.graphics.ijY graphics, SZB text) {
         double x = pickerX();
