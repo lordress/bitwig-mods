@@ -37,7 +37,10 @@ final class SqWidget extends dwF {
     private static final SZB CELL = new SZB(0.207f, 0.219f, 0.229f, 1f);
     private static final SZB BEAT = new SZB(0.252f, 0.263f, 0.272f, 1f);
     // RESS-SQ's own palette: violet steps, amber playhead, red eraser.
-    private static final SZB ACCENT = new SZB(0.66f, 0.42f, 0.96f, 1f);
+    /** Purple, or Bitwig's orange; the header's swatch switches between them. */
+    private static final SZB PURPLE = new SZB(0.66f, 0.42f, 0.96f, 1f);
+    private static final SZB ORANGE = new SZB(1.00f, 0.54f, 0.06f, 1f);
+    private static SZB ACCENT = PURPLE;
     private static final SZB PLAYHEAD = new SZB(0.98f, 0.71f, 0.32f, 1f);
     private static final SZB ERASE = new SZB(0.95f, 0.36f, 0.32f, 1f);
     // Lighter than a cell, so an unmarked row still shows its box.
@@ -186,6 +189,9 @@ final class SqWidget extends dwF {
             columns = 16;
         }
         applyGrid();
+        if ("orange".equalsIgnoreCase(RessSq.MOD.settings().get("theme", "purple").trim())) {
+            ACCENT = ORANGE;
+        }
     }
 
     private void applyGrid() {
@@ -203,6 +209,14 @@ final class SqWidget extends dwF {
         applyGrid();
         RessSq.MOD.settings().put("grid", Integer.toString(division));
         page = 0;
+        refresh();
+        OCx();
+    }
+
+    /** Switches the accent between the mod's purple and Bitwig's orange. */
+    private void cycleTheme() {
+        ACCENT = ACCENT == PURPLE ? ORANGE : PURPLE;
+        RessSq.MOD.settings().put("theme", ACCENT == PURPLE ? "purple" : "orange");
         refresh();
         OCx();
     }
@@ -412,7 +426,7 @@ final class SqWidget extends dwF {
             SZB text = mWG().beI(this);
             rectangle(graphics, 0, 0, rtK(), cBV(), BACKGROUND);
             rectangle(graphics, 0, 0, rtK(), wGt(26), STRIP);
-            graphics.beI(wGt(9), wGt(17), "RESS-SQ  ·  16 Steps  ·  1/16", text);
+            graphics.beI(wGt(9), wGt(17), "RESS-SQ  ·  " + columns + " Steps  ·  " + divisionLabel(), text);
             if (target == null) {
                 graphics.beI(wGt(9), wGt(45), "Open a single editable MIDI clip to use Steps.", text);
                 return;
@@ -432,6 +446,7 @@ final class SqWidget extends dwF {
 
     private void paintControls(com.bitwig.graphics.ijY graphics, SZB text) {
         double right = gridRight() - wGt(6);
+        rectangle(graphics, right - wGt(262), wGt(4), wGt(18), wGt(18), ACCENT);
         rectangle(graphics, right - wGt(224), wGt(4), wGt(42), wGt(18), CELL);
         graphics.beI(right - wGt(224) + centered(columns + " st", wGt(42)), wGt(17),
                 columns + " st", text.beI(0.85f));
@@ -809,6 +824,9 @@ final class SqWidget extends dwF {
             }
         }
         double right = gridRight() - wGt(6);
+        if (y < wGt(26) && x >= right - wGt(262) && x < right - wGt(244)) {
+            return control(this::cycleTheme);
+        }
         if (y < wGt(26) && x >= right - wGt(224) && x < right - wGt(182)) {
             return control(this::cycleColumns);
         }

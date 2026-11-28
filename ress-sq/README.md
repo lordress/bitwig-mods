@@ -36,6 +36,12 @@ Muted rows draw dimmed and drop out of **RND** and **CLR**. Marks, names, mutes,
 solos and the **o** scope belong to the clip: they survive switching clips and
 quitting Bitwig.
 
+## Theme
+
+The small colour square in the header switches the accent between the mod's purple and
+Bitwig's orange. It colours the notes, the FOLD underline, the selected tab and tool, the
+row highlight and the pills, and the choice is remembered.
+
 ## Grid
 
 The header has two toggles:
@@ -59,7 +65,7 @@ writes to marked keys.
 
 ## Install
 
-Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.9.zip` (do not unpack it) →
+Patchbay → **Mods → Add Mod…** → pick `ress-sq-0.5.10.zip` (do not unpack it) →
 tick **Framework: Piano Roll** and **RESS-SQ** → **Load**.
 
 Needs `piano-roll-framework` 0.2.0-dev.1 or newer. Built against Bitwig 6.1.7 on
